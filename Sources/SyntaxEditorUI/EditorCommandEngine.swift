@@ -113,6 +113,11 @@ private extension EditorCommandEngine {
         let replacement: String
     }
 
+    enum SelectionBoundaryAffinity {
+        case forward
+        case backward
+    }
+
     struct LineInfo {
         let lineRange: NSRange
         let contentRange: NSRange
@@ -438,18 +443,9 @@ private extension EditorCommandEngine {
         var selectionEnd = selection.location + selection.length
 
         for edit in sorted {
-            let oldLength = edit.range.length
-            let newLength = edit.replacement.utf16.count
-            let delta = newLength - oldLength
-
             mutable.replaceCharacters(in: edit.range, with: edit.replacement)
-
-            if edit.range.location <= selectionStart {
-                selectionStart += delta
-            }
-            if edit.range.location < selectionEnd {
-                selectionEnd += delta
-            }
+            selectionStart = adjustedSelectionOffset(selectionStart, for: edit, affinity: .forward)
+            selectionEnd = adjustedSelectionOffset(selectionEnd, for: edit, affinity: .backward)
         }
 
         let clampedStart = max(0, selectionStart)
@@ -459,6 +455,34 @@ private extension EditorCommandEngine {
             selectedRange: NSRange(location: clampedStart, length: clampedEnd - clampedStart),
             refreshStartUTF16: max(0, refreshStartUTF16)
         )
+    }
+
+    func adjustedSelectionOffset(
+        _ offset: Int,
+        for edit: TextEdit,
+        affinity: SelectionBoundaryAffinity
+    ) -> Int {
+        let start = edit.range.location
+        let oldEnd = start + edit.range.length
+        let newEnd = start + edit.replacement.utf16.count
+
+        if offset < start {
+            return offset
+        }
+
+        if offset == start {
+            switch affinity {
+            case .forward:
+                return newEnd
+            case .backward:
+                return start
+            }
+        }
+
+        if offset < oldEnd {
+            return newEnd
+        }
+        return offset + (newEnd - oldEnd)
     }
 
     func selectedLineRanges(in source: NSString, selection: NSRange) -> [NSRange] {
@@ -714,8 +738,12 @@ private extension EditorCommandEngine {
         var inBlockComment = false
         var isEscaped = false
 
+        var isInsideTemplateLiteralText: Bool {
+            templateExpressionDepthStack.contains(0)
+        }
+
         var isInsideLiteralOrComment: Bool {
-            inSingleQuote || inDoubleQuote || !templateExpressionDepthStack.isEmpty || inLineComment || inBlockComment
+            inSingleQuote || inDoubleQuote || isInsideTemplateLiteralText || inLineComment || inBlockComment
         }
     }
 

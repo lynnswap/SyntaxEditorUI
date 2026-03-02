@@ -298,6 +298,19 @@ struct SyntaxEditorUITests {
         #expect(result?.text == "a\nb\n")
     }
 
+    @Test("EditorCommandEngine keeps caret on current line when outdenting overlapping indent")
+    func editorCommandEngineOutdentSelectionClampsCaretInsideRemovedIndent() {
+        let engine = EditorCommandEngine()
+        let source = "x\n    y"
+        let result = engine.outdentSelection(
+            source: source,
+            selection: NSRange(location: 4, length: 0)
+        )
+
+        #expect(result?.text == "x\ny")
+        #expect(result?.selectedRange == NSRange(location: 2, length: 0))
+    }
+
     @Test("EditorCommandEngine toggles JavaScript line comments")
     func editorCommandEngineToggleJavaScriptComments() {
         let engine = EditorCommandEngine()
@@ -427,6 +440,21 @@ struct SyntaxEditorUITests {
         )
 
         #expect(result == nil)
+    }
+
+    @Test("EditorCommandEngine auto-pairs quote inside template placeholder expressions")
+    func editorCommandEngineAutoPairQuoteInsideTemplatePlaceholderExpression() {
+        let engine = EditorCommandEngine()
+        let source = "const tpl = `${value + "
+        let result = engine.transformInput(
+            source: source,
+            range: NSRange(location: source.utf16.count, length: 0),
+            replacementText: "\"",
+            language: .javascript
+        )
+
+        #expect(result?.text == source + "\"\"")
+        #expect(result?.selectedRange == NSRange(location: source.utf16.count + 1, length: 0))
     }
 
     @Test("BracketMatcher returns matching pair around caret")
