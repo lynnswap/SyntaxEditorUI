@@ -647,6 +647,36 @@ struct SyntaxEditorUITests {
         #expect(result?.selectedRange == NSRange(location: source.utf16.count + 1, length: 0))
     }
 
+    @Test("EditorCommandEngine auto-pairs quote after regex following return with inline block comment")
+    func editorCommandEngineAutoPairQuoteAfterRegexFollowingReturnWithInlineBlockComment() {
+        let engine = EditorCommandEngine()
+        let source = "return /* note */ /[//]/.test(path); const value = "
+        let result = engine.transformInput(
+            source: source,
+            range: NSRange(location: source.utf16.count, length: 0),
+            replacementText: "\"",
+            language: .javascript
+        )
+
+        #expect(result?.text == source + "\"\"")
+        #expect(result?.selectedRange == NSRange(location: source.utf16.count + 1, length: 0))
+    }
+
+    @Test("EditorCommandEngine auto-pairs quote after regex following return with inline line comment")
+    func editorCommandEngineAutoPairQuoteAfterRegexFollowingReturnWithInlineLineComment() {
+        let engine = EditorCommandEngine()
+        let source = "return // note\n/[//]/.test(path); const value = "
+        let result = engine.transformInput(
+            source: source,
+            range: NSRange(location: source.utf16.count, length: 0),
+            replacementText: "\"",
+            language: .javascript
+        )
+
+        #expect(result?.text == source + "\"\"")
+        #expect(result?.selectedRange == NSRange(location: source.utf16.count + 1, length: 0))
+    }
+
     @Test("EditorCommandEngine auto-pairs quote after regex following if condition with escaped template backtick")
     func editorCommandEngineAutoPairQuoteAfterRegexFollowingIfConditionWithEscapedTemplateBacktick() {
         let engine = EditorCommandEngine()

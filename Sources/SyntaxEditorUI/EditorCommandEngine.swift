@@ -1089,62 +1089,48 @@ private extension EditorCommandEngine {
 
     func shouldStartJavaScriptRegexLiteral(in source: NSString, at slashOffset: Int) -> Bool {
         guard slashOffset >= 0, slashOffset < source.length else { return false }
+        guard let cursor = previousJavaScriptSignificantOffset(in: source, before: slashOffset) else { return true }
+        let codeUnit = source.character(at: cursor)
 
-        var cursor = slashOffset - 1
-        while cursor >= 0 {
-            let codeUnit = source.character(at: cursor)
-            if codeUnit == 32 || codeUnit == 9 || codeUnit == 10 || codeUnit == 13 {
-                cursor -= 1
-                continue
-            }
-
-            if isInsideJavaScriptLineCommentOnlyLine(in: source, at: cursor) {
-                let lineStart = source.lineRange(for: NSRange(location: cursor, length: 0)).location
-                cursor = lineStart - 1
-                continue
-            }
-
-            if let tokenInfo = javaScriptIdentifierToken(in: source, endingAt: cursor) {
-                let token = tokenInfo.text
-                if [
-                    "return", "throw", "case", "delete", "void", "typeof", "instanceof", "new", "in", "of", "await",
-                    "yield", "else",
-                ].contains(token) {
-                    if let previousCodeUnit = previousNonWhitespaceCodeUnit(in: source, before: tokenInfo.range.location),
-                       previousCodeUnit == 46 || previousCodeUnit == 63 // ".", "?"
-                    {
+        if let tokenInfo = javaScriptIdentifierToken(in: source, endingAt: cursor) {
+            let token = tokenInfo.text
+            if [
+                "return", "throw", "case", "delete", "void", "typeof", "instanceof", "new", "in", "of", "await",
+                "yield", "else",
+            ].contains(token) {
+                if let previousOffset = previousJavaScriptSignificantOffset(in: source, before: tokenInfo.range.location) {
+                    let previousCodeUnit = source.character(at: previousOffset)
+                    if previousCodeUnit == 46 || previousCodeUnit == 63 { // ".", "?"
                         return false
                     }
-                    return true
-                }
-                return false
-            }
-
-            if (48...57).contains(Int(codeUnit)) || codeUnit == 93 || codeUnit == 125 {
-                return false
-            }
-            if codeUnit == 41 { // ")"
-                return shouldTreatSlashAfterClosingParenAsRegex(in: source, closingParenOffset: cursor)
-            }
-            if codeUnit == 47 { // "/"
-                return false
-            }
-            if codeUnit == 46 { // "."
-                return false
-            }
-            if codeUnit == 34 || codeUnit == 39 || codeUnit == 96 { // "\"", "'", "`"
-                return false
-            }
-
-            if [
-                40, 91, 123, 44, 58, 59, 61, 33, 63, 43, 45, 42, 37, 38, 124, 94, 126, 60, 62,
-            ].contains(Int(codeUnit)) {
-                if (codeUnit == 43 || codeUnit == 45), previousNonWhitespaceCodeUnit(in: source, before: cursor) == codeUnit {
-                    return false
                 }
                 return true
             }
+            return false
+        }
 
+        if (48...57).contains(Int(codeUnit)) || codeUnit == 93 || codeUnit == 125 {
+            return false
+        }
+        if codeUnit == 41 { // ")"
+            return shouldTreatSlashAfterClosingParenAsRegex(in: source, closingParenOffset: cursor)
+        }
+        if codeUnit == 47 { // "/"
+            return false
+        }
+        if codeUnit == 46 { // "."
+            return false
+        }
+        if codeUnit == 34 || codeUnit == 39 || codeUnit == 96 { // "\"", "'", "`"
+            return false
+        }
+
+        if [
+            40, 91, 123, 44, 58, 59, 61, 33, 63, 43, 45, 42, 37, 38, 124, 94, 126, 60, 62,
+        ].contains(Int(codeUnit)) {
+            if (codeUnit == 43 || codeUnit == 45), previousNonWhitespaceCodeUnit(in: source, before: cursor) == codeUnit {
+                return false
+            }
             return true
         }
 
@@ -1630,15 +1616,6 @@ private extension EditorCommandEngine {
             return codeUnit
         }
         return nil
-    }
-
-    func isInsideJavaScriptLineCommentOnlyLine(in source: NSString, at location: Int) -> Bool {
-        guard location >= 0, location < source.length else { return false }
-        let lineRange = source.lineRange(for: NSRange(location: location, length: 0))
-        let contentRange = lineContentRange(in: source, lineRange: lineRange)
-        guard contentRange.length > 0 else { return false }
-        let content = source.substring(with: contentRange)
-        return content.trimmingCharacters(in: .whitespacesAndNewlines).hasPrefix("//")
     }
 
     struct CSSWrappedCommentBounds {
