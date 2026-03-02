@@ -243,11 +243,25 @@ struct SyntaxEditorUITests {
             source: "()",
             range: NSRange(location: 0, length: 1),
             replacementText: "",
-            language: .javascript
+            language: .javascript,
+            deletionIntent: .backward
         )
 
         #expect(result?.text == "")
         #expect(result?.selectedRange == NSRange(location: 0, length: 0))
+    }
+
+    @Test("EditorCommandEngine does not pair-delete one-character selections")
+    func editorCommandEngineSelectionDeleteDoesNotPairBackspace() {
+        let engine = EditorCommandEngine()
+        let result = engine.transformInput(
+            source: "{}",
+            range: NSRange(location: 0, length: 1),
+            replacementText: "",
+            language: .javascript
+        )
+
+        #expect(result == nil)
     }
 
     @Test("EditorCommandEngine indents selected lines")
@@ -345,6 +359,51 @@ struct SyntaxEditorUITests {
     func editorCommandEngineAutoPairQuoteAfterURLLiteral() {
         let engine = EditorCommandEngine()
         let source = "const url = \"https://a\"; const value = "
+        let result = engine.transformInput(
+            source: source,
+            range: NSRange(location: source.utf16.count, length: 0),
+            replacementText: "\"",
+            language: .javascript
+        )
+
+        #expect(result?.text == source + "\"\"")
+        #expect(result?.selectedRange == NSRange(location: source.utf16.count + 1, length: 0))
+    }
+
+    @Test("EditorCommandEngine auto-pairs quote after apostrophe in double-quoted literal")
+    func editorCommandEngineAutoPairQuoteAfterApostropheInDoubleQuotedLiteral() {
+        let engine = EditorCommandEngine()
+        let source = "const msg = \"don't\"; const value = "
+        let result = engine.transformInput(
+            source: source,
+            range: NSRange(location: source.utf16.count, length: 0),
+            replacementText: "\"",
+            language: .javascript
+        )
+
+        #expect(result?.text == source + "\"\"")
+        #expect(result?.selectedRange == NSRange(location: source.utf16.count + 1, length: 0))
+    }
+
+    @Test("EditorCommandEngine auto-pairs quote after block-comment marker in literal")
+    func editorCommandEngineAutoPairQuoteAfterBlockCommentMarkerLiteral() {
+        let engine = EditorCommandEngine()
+        let source = "const marker = \"/*\"; const value = "
+        let result = engine.transformInput(
+            source: source,
+            range: NSRange(location: source.utf16.count, length: 0),
+            replacementText: "\"",
+            language: .javascript
+        )
+
+        #expect(result?.text == source + "\"\"")
+        #expect(result?.selectedRange == NSRange(location: source.utf16.count + 1, length: 0))
+    }
+
+    @Test("EditorCommandEngine auto-pairs quote after template literal comment-like text")
+    func editorCommandEngineAutoPairQuoteAfterTemplateLiteralCommentLikeText() {
+        let engine = EditorCommandEngine()
+        let source = "const x = \"*/\"; const t = `/*`; const value = "
         let result = engine.transformInput(
             source: source,
             range: NSRange(location: source.utf16.count, length: 0),

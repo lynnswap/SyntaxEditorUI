@@ -9,11 +9,17 @@ struct EditorCommandResult {
 struct EditorCommandEngine {
     private let indentUnit = "    "
 
+    enum DeletionIntent {
+        case unspecified
+        case backward
+    }
+
     func transformInput(
         source: String,
         range: NSRange,
         replacementText: String,
-        language: SyntaxLanguage
+        language: SyntaxLanguage,
+        deletionIntent: DeletionIntent = .unspecified
     ) -> EditorCommandResult? {
         let nsSource = source as NSString
         let safeRange = Self.clampedRange(range, utf16Length: nsSource.length)
@@ -22,7 +28,7 @@ struct EditorCommandEngine {
             return smartNewline(source: source, range: safeRange)
         }
 
-        if replacementText.isEmpty, safeRange.length == 1 {
+        if deletionIntent == .backward, replacementText.isEmpty, safeRange.length == 1 {
             if let result = pairAwareBackspace(source: source, range: safeRange) {
                 return result
             }
@@ -657,19 +663,20 @@ private extension EditorCommandEngine {
         location: Int,
         language: SyntaxLanguage
     ) -> Bool {
-        let lineRange = source.lineRange(for: NSRange(location: max(0, min(location, source.length)), length: 0))
-        let prefixLength = max(0, location - lineRange.location)
+        let clampedLocation = max(0, min(location, source.length))
+
+        if language == .javascript {
+            let prefix = source.substring(to: clampedLocation)
+            return analyzeJavaScriptPrefix(prefix).isInsideLiteralOrComment
+        }
+
+        let lineRange = source.lineRange(for: NSRange(location: clampedLocation, length: 0))
+        let prefixLength = max(0, clampedLocation - lineRange.location)
         let prefix = source.substring(with: NSRange(location: lineRange.location, length: prefixLength))
         if hasOddUnescapedQuote(in: prefix, quote: "\"") { return true }
 
-        if language == .javascript {
-            if hasOddUnescapedQuote(in: prefix, quote: "'") { return true }
-            if hasOddUnescapedQuote(in: prefix, quote: "`") { return true }
-            if hasLineCommentStartOutsideLiterals(in: prefix) { return true }
-        }
-
         if language != .json {
-            let before = source.substring(to: location)
+            let before = source.substring(to: clampedLocation)
             let openCount = before.components(separatedBy: "/*").count - 1
             let closeCount = before.components(separatedBy: "*/").count - 1
             if openCount > closeCount {
@@ -699,67 +706,99 @@ private extension EditorCommandEngine {
         return count % 2 == 1
     }
 
-    func hasLineCommentStartOutsideLiterals(in text: String) -> Bool {
-        let nsText = text as NSString
-        var cursor = 0
+    struct JavaScriptPrefixAnalysis {
         var inSingleQuote = false
         var inDoubleQuote = false
-        var isEscaped = false
         var templateExpressionDepthStack: [Int] = []
+        var inLineComment = false
+        var inBlockComment = false
+        var isEscaped = false
+
+        var isInsideLiteralOrComment: Bool {
+            inSingleQuote || inDoubleQuote || !templateExpressionDepthStack.isEmpty || inLineComment || inBlockComment
+        }
+    }
+
+    func analyzeJavaScriptPrefix(_ text: String) -> JavaScriptPrefixAnalysis {
+        let nsText = text as NSString
+        var analysis = JavaScriptPrefixAnalysis()
+        var cursor = 0
         let singleQuote: unichar = 39
         let doubleQuote: unichar = 34
         let backtick: unichar = 96
         let backslash: unichar = 92
         let dollar: unichar = 36
         let slash: unichar = 47
+        let asterisk: unichar = 42
         let openBrace: unichar = 123
         let closeBrace: unichar = 125
+        let newline: unichar = 10
+        let carriageReturn: unichar = 13
 
         while cursor < nsText.length {
             let codeUnit = nsText.character(at: cursor)
             let nextCodeUnit: unichar? = cursor + 1 < nsText.length ? nsText.character(at: cursor + 1) : nil
 
-            if isEscaped {
-                isEscaped = false
+            if analysis.inLineComment {
+                if codeUnit == newline || codeUnit == carriageReturn {
+                    analysis.inLineComment = false
+                }
                 cursor += 1
                 continue
             }
 
-            if inSingleQuote {
+            if analysis.inBlockComment {
+                if codeUnit == asterisk, nextCodeUnit == slash {
+                    analysis.inBlockComment = false
+                    cursor += 2
+                } else {
+                    cursor += 1
+                }
+                continue
+            }
+
+            if analysis.isEscaped {
+                analysis.isEscaped = false
+                cursor += 1
+                continue
+            }
+
+            if analysis.inSingleQuote {
                 if codeUnit == backslash {
-                    isEscaped = true
+                    analysis.isEscaped = true
                 } else if codeUnit == singleQuote {
-                    inSingleQuote = false
+                    analysis.inSingleQuote = false
                 }
                 cursor += 1
                 continue
             }
 
-            if inDoubleQuote {
+            if analysis.inDoubleQuote {
                 if codeUnit == backslash {
-                    isEscaped = true
+                    analysis.isEscaped = true
                 } else if codeUnit == doubleQuote {
-                    inDoubleQuote = false
+                    analysis.inDoubleQuote = false
                 }
                 cursor += 1
                 continue
             }
 
-            if var currentTemplateExpressionDepth = templateExpressionDepthStack.last {
+            if var currentTemplateExpressionDepth = analysis.templateExpressionDepthStack.last {
                 if currentTemplateExpressionDepth == 0 {
                     if codeUnit == backslash {
-                        isEscaped = true
+                        analysis.isEscaped = true
                         cursor += 1
                         continue
                     }
                     if codeUnit == backtick {
-                        templateExpressionDepthStack.removeLast()
+                        analysis.templateExpressionDepthStack.removeLast()
                         cursor += 1
                         continue
                     }
                     if codeUnit == dollar, nextCodeUnit == openBrace {
                         currentTemplateExpressionDepth = 1
-                        templateExpressionDepthStack[templateExpressionDepthStack.count - 1] = currentTemplateExpressionDepth
+                        analysis.templateExpressionDepthStack[analysis.templateExpressionDepthStack.count - 1] =
+                            currentTemplateExpressionDepth
                         cursor += 2
                         continue
                     }
@@ -768,32 +807,41 @@ private extension EditorCommandEngine {
                 }
 
                 if codeUnit == singleQuote {
-                    inSingleQuote = true
+                    analysis.inSingleQuote = true
                     cursor += 1
                     continue
                 }
                 if codeUnit == doubleQuote {
-                    inDoubleQuote = true
+                    analysis.inDoubleQuote = true
                     cursor += 1
                     continue
                 }
                 if codeUnit == backtick {
-                    templateExpressionDepthStack.append(0)
+                    analysis.templateExpressionDepthStack.append(0)
                     cursor += 1
                     continue
                 }
                 if codeUnit == slash, nextCodeUnit == slash {
-                    return true
+                    analysis.inLineComment = true
+                    cursor += 2
+                    continue
+                }
+                if codeUnit == slash, nextCodeUnit == asterisk {
+                    analysis.inBlockComment = true
+                    cursor += 2
+                    continue
                 }
                 if codeUnit == openBrace {
                     currentTemplateExpressionDepth += 1
-                    templateExpressionDepthStack[templateExpressionDepthStack.count - 1] = currentTemplateExpressionDepth
+                    analysis.templateExpressionDepthStack[analysis.templateExpressionDepthStack.count - 1] =
+                        currentTemplateExpressionDepth
                     cursor += 1
                     continue
                 }
                 if codeUnit == closeBrace {
                     currentTemplateExpressionDepth -= 1
-                    templateExpressionDepthStack[templateExpressionDepthStack.count - 1] = max(0, currentTemplateExpressionDepth)
+                    analysis.templateExpressionDepthStack[analysis.templateExpressionDepthStack.count - 1] =
+                        max(0, currentTemplateExpressionDepth)
                     cursor += 1
                     continue
                 }
@@ -803,29 +851,36 @@ private extension EditorCommandEngine {
             }
 
             if codeUnit == singleQuote {
-                inSingleQuote = true
+                analysis.inSingleQuote = true
                 cursor += 1
                 continue
             }
             if codeUnit == doubleQuote {
-                inDoubleQuote = true
+                analysis.inDoubleQuote = true
                 cursor += 1
                 continue
             }
             if codeUnit == backtick {
-                templateExpressionDepthStack.append(0)
+                analysis.templateExpressionDepthStack.append(0)
                 cursor += 1
                 continue
             }
 
             if codeUnit == slash, nextCodeUnit == slash {
-                return true
+                analysis.inLineComment = true
+                cursor += 2
+                continue
+            }
+            if codeUnit == slash, nextCodeUnit == asterisk {
+                analysis.inBlockComment = true
+                cursor += 2
+                continue
             }
 
             cursor += 1
         }
 
-        return false
+        return analysis
     }
 
     static func clampedRange(_ range: NSRange, utf16Length: Int) -> NSRange {

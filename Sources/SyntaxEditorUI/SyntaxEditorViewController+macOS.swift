@@ -216,18 +216,22 @@ public final class SyntaxEditorViewController: NSViewController, NSTextViewDeleg
         case #selector(NSResponder.deleteBackward(_:)):
             let selectedRange = textView.selectedRange()
             let deleteRange: NSRange
+            let deletionIntent: EditorCommandEngine.DeletionIntent
             if selectedRange.length > 0 {
                 deleteRange = selectedRange
+                deletionIntent = .unspecified
             } else {
                 guard selectedRange.location > 0 else { return false }
                 deleteRange = NSRange(location: selectedRange.location - 1, length: 1)
+                deletionIntent = .backward
             }
 
             if let result = commandEngine.transformInput(
                 source: textView.string,
                 range: deleteRange,
                 replacementText: "",
-                language: model.language
+                language: model.language,
+                deletionIntent: deletionIntent
             ) {
                 applyCommandResult(result)
                 return true

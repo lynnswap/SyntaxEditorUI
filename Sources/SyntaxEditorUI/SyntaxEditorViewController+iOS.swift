@@ -138,11 +138,16 @@ public final class SyntaxEditorViewController: UIViewController, UITextViewDeleg
         pendingEditStartUTF16 = range.location
 
         let currentSource = textView.text ?? ""
+        let isBackwardDelete = text.isEmpty
+            && range.length == 1
+            && textView.selectedRange.length == 0
+            && textView.selectedRange.location == range.location + range.length
         if let result = commandEngine.transformInput(
             source: currentSource,
             range: range,
             replacementText: text,
-            language: model.language
+            language: model.language,
+            deletionIntent: isBackwardDelete ? .backward : .unspecified
         ) {
             applyCommandResult(result)
             return false
