@@ -356,6 +356,19 @@ struct SyntaxEditorUITests {
         #expect(second?.text == source)
     }
 
+    @Test("EditorCommandEngine does not unwrap multiple CSS comments as one block")
+    func editorCommandEngineCssCommentToggleNoopForMultipleIndependentBlocks() {
+        let engine = EditorCommandEngine()
+        let source = "/* a */\n/* b */\n"
+        let result = engine.toggleComment(
+            source: source,
+            selection: NSRange(location: 0, length: source.utf16.count),
+            language: .css
+        )
+
+        #expect(result == nil)
+    }
+
     @Test("EditorCommandEngine returns no-op for JSON comments")
     func editorCommandEngineJsonCommentNoop() {
         let engine = EditorCommandEngine()
@@ -377,6 +390,21 @@ struct SyntaxEditorUITests {
             range: NSRange(location: source.utf16.count, length: 0),
             replacementText: "\"",
             language: .javascript
+        )
+
+        #expect(result?.text == source + "\"\"")
+        #expect(result?.selectedRange == NSRange(location: source.utf16.count + 1, length: 0))
+    }
+
+    @Test("EditorCommandEngine auto-pairs CSS quote after comment marker inside string literal")
+    func editorCommandEngineAutoPairCssQuoteAfterCommentMarkerInsideStringLiteral() {
+        let engine = EditorCommandEngine()
+        let source = "content: \"/*\"; color: "
+        let result = engine.transformInput(
+            source: source,
+            range: NSRange(location: source.utf16.count, length: 0),
+            replacementText: "\"",
+            language: .css
         )
 
         #expect(result?.text == source + "\"\"")

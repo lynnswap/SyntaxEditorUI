@@ -377,17 +377,9 @@ private extension EditorCommandEngine {
 
         let segment = nsSource.substring(with: targetLinesRange)
         let trimmed = segment.trimmingCharacters(in: .whitespacesAndNewlines)
-
-        if trimmed.hasPrefix("/*"), trimmed.hasSuffix("*/"),
-           segment.range(of: "/*") != nil,
-           segment.range(of: "*/", options: .backwards) != nil
-        {
-            let nsSegment = segment as NSString
-            let openLocation = nsSegment.range(of: "/*").location
-            let closeLocation = nsSegment.range(of: "*/", options: .backwards).location
-            guard openLocation != NSNotFound, closeLocation != NSNotFound, closeLocation > openLocation else {
-                return nil
-            }
+        if let wrappedComment = wrappedCSSCommentBounds(in: segment) {
+            let openLocation = wrappedComment.openLocation
+            let closeLocation = wrappedComment.closeLocation
 
             let openAbsolute = targetLinesRange.location + openLocation
             let closeAbsolute = targetLinesRange.location + closeLocation
@@ -414,6 +406,10 @@ private extension EditorCommandEngine {
                 selection: safeSelection,
                 refreshStartUTF16: targetLinesRange.location
             )
+        }
+
+        if trimmed.hasPrefix("/*"), trimmed.hasSuffix("*/") {
+            return nil
         }
 
         let edits = [
@@ -694,6 +690,11 @@ private extension EditorCommandEngine {
             return analyzeJavaScriptPrefix(prefix).isInsideLiteralOrComment
         }
 
+        if language == .css {
+            let prefix = source.substring(to: clampedLocation)
+            return analyzeCSSPrefix(prefix).isInsideLiteralOrComment
+        }
+
         let lineRange = source.lineRange(for: NSRange(location: clampedLocation, length: 0))
         let prefixLength = max(0, clampedLocation - lineRange.location)
         let prefix = source.substring(with: NSRange(location: lineRange.location, length: prefixLength))
@@ -728,6 +729,90 @@ private extension EditorCommandEngine {
             }
         }
         return count % 2 == 1
+    }
+
+    struct CSSPrefixAnalysis {
+        var inSingleQuote = false
+        var inDoubleQuote = false
+        var inBlockComment = false
+        var isEscaped = false
+
+        var isInsideLiteralOrComment: Bool {
+            inSingleQuote || inDoubleQuote || inBlockComment
+        }
+    }
+
+    func analyzeCSSPrefix(_ text: String) -> CSSPrefixAnalysis {
+        let nsText = text as NSString
+        var analysis = CSSPrefixAnalysis()
+        var cursor = 0
+        let singleQuote: unichar = 39
+        let doubleQuote: unichar = 34
+        let backslash: unichar = 92
+        let slash: unichar = 47
+        let asterisk: unichar = 42
+
+        while cursor < nsText.length {
+            let codeUnit = nsText.character(at: cursor)
+            let nextCodeUnit: unichar? = cursor + 1 < nsText.length ? nsText.character(at: cursor + 1) : nil
+
+            if analysis.inBlockComment {
+                if codeUnit == asterisk, nextCodeUnit == slash {
+                    analysis.inBlockComment = false
+                    cursor += 2
+                } else {
+                    cursor += 1
+                }
+                continue
+            }
+
+            if analysis.isEscaped {
+                analysis.isEscaped = false
+                cursor += 1
+                continue
+            }
+
+            if analysis.inSingleQuote {
+                if codeUnit == backslash {
+                    analysis.isEscaped = true
+                } else if codeUnit == singleQuote {
+                    analysis.inSingleQuote = false
+                }
+                cursor += 1
+                continue
+            }
+
+            if analysis.inDoubleQuote {
+                if codeUnit == backslash {
+                    analysis.isEscaped = true
+                } else if codeUnit == doubleQuote {
+                    analysis.inDoubleQuote = false
+                }
+                cursor += 1
+                continue
+            }
+
+            if codeUnit == singleQuote {
+                analysis.inSingleQuote = true
+                cursor += 1
+                continue
+            }
+            if codeUnit == doubleQuote {
+                analysis.inDoubleQuote = true
+                cursor += 1
+                continue
+            }
+
+            if codeUnit == slash, nextCodeUnit == asterisk {
+                analysis.inBlockComment = true
+                cursor += 2
+                continue
+            }
+
+            cursor += 1
+        }
+
+        return analysis
     }
 
     struct JavaScriptPrefixAnalysis {
@@ -1094,5 +1179,56 @@ private extension EditorCommandEngine {
         guard contentRange.length > 0 else { return false }
         let content = source.substring(with: contentRange)
         return content.trimmingCharacters(in: .whitespacesAndNewlines).hasPrefix("//")
+    }
+
+    struct CSSWrappedCommentBounds {
+        let openLocation: Int
+        let closeLocation: Int
+    }
+
+    func wrappedCSSCommentBounds(in segment: String) -> CSSWrappedCommentBounds? {
+        let nsSegment = segment as NSString
+        guard nsSegment.length >= 4 else { return nil }
+
+        var firstNonWhitespace = 0
+        while firstNonWhitespace < nsSegment.length {
+            let codeUnit = nsSegment.character(at: firstNonWhitespace)
+            if codeUnit == 32 || codeUnit == 9 || codeUnit == 10 || codeUnit == 13 {
+                firstNonWhitespace += 1
+                continue
+            }
+            break
+        }
+        guard firstNonWhitespace + 1 < nsSegment.length else { return nil }
+        guard nsSegment.character(at: firstNonWhitespace) == 47, nsSegment.character(at: firstNonWhitespace + 1) == 42 else {
+            return nil
+        }
+
+        var lastNonWhitespace = nsSegment.length - 1
+        while lastNonWhitespace >= 0 {
+            let codeUnit = nsSegment.character(at: lastNonWhitespace)
+            if codeUnit == 32 || codeUnit == 9 || codeUnit == 10 || codeUnit == 13 {
+                lastNonWhitespace -= 1
+                continue
+            }
+            break
+        }
+        guard lastNonWhitespace - 1 >= 0 else { return nil }
+        guard nsSegment.character(at: lastNonWhitespace - 1) == 42, nsSegment.character(at: lastNonWhitespace) == 47 else {
+            return nil
+        }
+
+        let openLocation = firstNonWhitespace
+        let closeLocation = lastNonWhitespace - 1
+        guard closeLocation > openLocation else { return nil }
+
+        let closeSearchRange = NSRange(
+            location: openLocation + 2,
+            length: max(0, nsSegment.length - (openLocation + 2))
+        )
+        let firstCloseLocation = nsSegment.range(of: "*/", options: [], range: closeSearchRange).location
+        guard firstCloseLocation == closeLocation else { return nil }
+
+        return CSSWrappedCommentBounds(openLocation: openLocation, closeLocation: closeLocation)
     }
 }
