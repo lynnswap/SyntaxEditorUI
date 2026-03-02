@@ -602,6 +602,126 @@ struct SyntaxEditorUITests {
         #expect(result == nil)
     }
 
+    @Test("EditorCommandEngine auto-pairs quote after regex following if condition")
+    func editorCommandEngineAutoPairQuoteAfterRegexFollowingIfCondition() {
+        let engine = EditorCommandEngine()
+        let source = "if (ok) /[//]/.test(path); const value = "
+        let result = engine.transformInput(
+            source: source,
+            range: NSRange(location: source.utf16.count, length: 0),
+            replacementText: "\"",
+            language: .javascript
+        )
+
+        #expect(result?.text == source + "\"\"")
+        #expect(result?.selectedRange == NSRange(location: source.utf16.count + 1, length: 0))
+    }
+
+    @Test("EditorCommandEngine auto-pairs quote after regex following if condition with block comment")
+    func editorCommandEngineAutoPairQuoteAfterRegexFollowingIfConditionWithBlockComment() {
+        let engine = EditorCommandEngine()
+        let source = "if /*c*/ (ok) /[//]/.test(path); const value = "
+        let result = engine.transformInput(
+            source: source,
+            range: NSRange(location: source.utf16.count, length: 0),
+            replacementText: "\"",
+            language: .javascript
+        )
+
+        #expect(result?.text == source + "\"\"")
+        #expect(result?.selectedRange == NSRange(location: source.utf16.count + 1, length: 0))
+    }
+
+    @Test("EditorCommandEngine auto-pairs quote after regex following if condition with line comment")
+    func editorCommandEngineAutoPairQuoteAfterRegexFollowingIfConditionWithLineComment() {
+        let engine = EditorCommandEngine()
+        let source = "if // note\n(ok) /[//]/.test(path); const value = "
+        let result = engine.transformInput(
+            source: source,
+            range: NSRange(location: source.utf16.count, length: 0),
+            replacementText: "\"",
+            language: .javascript
+        )
+
+        #expect(result?.text == source + "\"\"")
+        #expect(result?.selectedRange == NSRange(location: source.utf16.count + 1, length: 0))
+    }
+
+    @Test("EditorCommandEngine auto-pairs quote after regex following if condition with escaped template backtick")
+    func editorCommandEngineAutoPairQuoteAfterRegexFollowingIfConditionWithEscapedTemplateBacktick() {
+        let engine = EditorCommandEngine()
+        let source = "if (`a\\`b`) /[//]/.test(path); const value = "
+        let result = engine.transformInput(
+            source: source,
+            range: NSRange(location: source.utf16.count, length: 0),
+            replacementText: "\"",
+            language: .javascript
+        )
+
+        #expect(result?.text == source + "\"\"")
+        #expect(result?.selectedRange == NSRange(location: source.utf16.count + 1, length: 0))
+    }
+
+    @Test("EditorCommandEngine auto-pairs quote after regex following if condition with template text brace")
+    func editorCommandEngineAutoPairQuoteAfterRegexFollowingIfConditionWithTemplateTextBrace() {
+        let engine = EditorCommandEngine()
+        let source = "if (`x}y`) /[//]/.test(path); const value = "
+        let result = engine.transformInput(
+            source: source,
+            range: NSRange(location: source.utf16.count, length: 0),
+            replacementText: "\"",
+            language: .javascript
+        )
+
+        #expect(result?.text == source + "\"\"")
+        #expect(result?.selectedRange == NSRange(location: source.utf16.count + 1, length: 0))
+    }
+
+    @Test("EditorCommandEngine auto-pairs quote after regex following if condition with nested template placeholder braces")
+    func editorCommandEngineAutoPairQuoteAfterRegexFollowingIfConditionWithNestedTemplatePlaceholderBraces() {
+        let engine = EditorCommandEngine()
+        let source = "if (`${(function(){ return 1 })}`) /[//]/.test(path); const value = "
+        let result = engine.transformInput(
+            source: source,
+            range: NSRange(location: source.utf16.count, length: 0),
+            replacementText: "\"",
+            language: .javascript
+        )
+
+        #expect(result?.text == source + "\"\"")
+        #expect(result?.selectedRange == NSRange(location: source.utf16.count + 1, length: 0))
+    }
+
+    @Test("EditorCommandEngine auto-pairs quote after member-call division with keyword-like name")
+    func editorCommandEngineAutoPairQuoteAfterMemberCallDivisionWithKeywordLikeName() {
+        let engine = EditorCommandEngine()
+        let source = "const ratio = obj.if(1) / 2; const value = "
+        let result = engine.transformInput(
+            source: source,
+            range: NSRange(location: source.utf16.count, length: 0),
+            replacementText: "\"",
+            language: .javascript
+        )
+
+        #expect(result?.text == source + "\"\"")
+        #expect(result?.selectedRange == NSRange(location: source.utf16.count + 1, length: 0))
+    }
+
+    @Test("EditorCommandEngine auto-pairs quote after division in object literal keyword-like key")
+    func editorCommandEngineAutoPairQuoteAfterDivisionInObjectLiteralKeywordLikeKey() {
+        let engine = EditorCommandEngine()
+        let source = "const o = { if: (value) / 2 }; const value = "
+        let result = engine.transformInput(
+            source: source,
+            range: NSRange(location: source.utf16.count, length: 0),
+            replacementText: "\"",
+            language: .javascript
+        )
+
+        #expect(result?.text == source + "\"\"")
+        #expect(result?.selectedRange == NSRange(location: source.utf16.count + 1, length: 0))
+    }
+
     @Test("EditorCommandEngine auto-pairs quote after division following string literal")
     func editorCommandEngineAutoPairQuoteAfterDivisionFollowingStringLiteral() {
         let engine = EditorCommandEngine()
@@ -636,6 +756,21 @@ struct SyntaxEditorUITests {
     func editorCommandEngineAutoPairQuoteAfterDivisionWithUnicodeIdentifier() {
         let engine = EditorCommandEngine()
         let source = "const result = \u{5024} / 2; const value = "
+        let result = engine.transformInput(
+            source: source,
+            range: NSRange(location: source.utf16.count, length: 0),
+            replacementText: "\"",
+            language: .javascript
+        )
+
+        #expect(result?.text == source + "\"\"")
+        #expect(result?.selectedRange == NSRange(location: source.utf16.count + 1, length: 0))
+    }
+
+    @Test("EditorCommandEngine auto-pairs quote after division with non-BMP identifier")
+    func editorCommandEngineAutoPairQuoteAfterDivisionWithNonBMPIdentifier() {
+        let engine = EditorCommandEngine()
+        let source = "const result = \u{10437} / 2; const value = "
         let result = engine.transformInput(
             source: source,
             range: NSRange(location: source.utf16.count, length: 0),
