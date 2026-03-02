@@ -62,6 +62,7 @@ public final class SyntaxEditorViewController: UIViewController, UITextViewDeleg
     public override func viewDidLoad() {
         super.viewDidLoad()
         configureTextView()
+        configureTraitChangeObservation()
         applyObservedText(
             model.text,
             forceTextUpdate: true
@@ -74,27 +75,13 @@ public final class SyntaxEditorViewController: UIViewController, UITextViewDeleg
         )
     }
 
-    public override func traitCollectionDidChange(_ previousTraitCollection: UITraitCollection?) {
-        super.traitCollectionDidChange(previousTraitCollection)
-        guard previousTraitCollection?.hasDifferentColorAppearance(comparedTo: traitCollection) == true else {
-            return
-        }
-
-        textView.typingAttributes = baseAttributes()
-        scheduleHighlight(
-            source: textView.text ?? "",
-            language: model.language,
-            refreshStartUTF16: 0
-        )
-    }
-
     public override var keyCommands: [UIKeyCommand]? {
         [
-            UIKeyCommand(input: "\t", modifierFlags: [], action: #selector(handleIndentCommand), discoverabilityTitle: "Indent"),
-            UIKeyCommand(input: "\t", modifierFlags: [.shift], action: #selector(handleOutdentCommand), discoverabilityTitle: "Outdent"),
-            UIKeyCommand(input: "/", modifierFlags: [.command], action: #selector(handleToggleCommentCommand), discoverabilityTitle: "Toggle Comment"),
-            UIKeyCommand(input: "]", modifierFlags: [.command], action: #selector(handleIndentCommand), discoverabilityTitle: "Indent"),
-            UIKeyCommand(input: "[", modifierFlags: [.command], action: #selector(handleOutdentCommand), discoverabilityTitle: "Outdent"),
+            makeKeyCommand(input: "\t", modifierFlags: [], action: #selector(handleIndentCommand), title: "Indent"),
+            makeKeyCommand(input: "\t", modifierFlags: [.shift], action: #selector(handleOutdentCommand), title: "Outdent"),
+            makeKeyCommand(input: "/", modifierFlags: [.command], action: #selector(handleToggleCommentCommand), title: "Toggle Comment"),
+            makeKeyCommand(input: "]", modifierFlags: [.command], action: #selector(handleIndentCommand), title: "Indent"),
+            makeKeyCommand(input: "[", modifierFlags: [.command], action: #selector(handleOutdentCommand), title: "Outdent"),
         ]
     }
 
@@ -173,6 +160,35 @@ public final class SyntaxEditorViewController: UIViewController, UITextViewDeleg
         applyLineWrappingConfiguration(lineWrappingEnabled: model.lineWrappingEnabled)
         textView.typingAttributes = baseAttributes()
         textView.inputAccessoryView = makeInputAccessoryView()
+    }
+
+    private func configureTraitChangeObservation() {
+        registerForTraitChanges([UITraitUserInterfaceStyle.self]) { (self: Self, previousTraitCollection: UITraitCollection) in
+            guard previousTraitCollection.hasDifferentColorAppearance(comparedTo: self.traitCollection) else {
+                return
+            }
+            self.refreshForColorAppearanceChange()
+        }
+    }
+
+    private func refreshForColorAppearanceChange() {
+        textView.typingAttributes = baseAttributes()
+        scheduleHighlight(
+            source: textView.text ?? "",
+            language: model.language,
+            refreshStartUTF16: 0
+        )
+    }
+
+    private func makeKeyCommand(
+        input: String,
+        modifierFlags: UIKeyModifierFlags,
+        action: Selector,
+        title: String
+    ) -> UIKeyCommand {
+        let command = UIKeyCommand(input: input, modifierFlags: modifierFlags, action: action)
+        command.discoverabilityTitle = title
+        return command
     }
 
     private func makeInputAccessoryView() -> UIView {
