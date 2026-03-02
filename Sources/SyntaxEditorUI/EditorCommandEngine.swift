@@ -736,6 +736,9 @@ private extension EditorCommandEngine {
         var templateExpressionDepthStack: [Int] = []
         var inLineComment = false
         var inBlockComment = false
+        var inRegexLiteral = false
+        var inRegexCharacterClass = false
+        var regexCharacterClassHasContent = false
         var isEscaped = false
 
         var isInsideTemplateLiteralText: Bool {
@@ -743,7 +746,7 @@ private extension EditorCommandEngine {
         }
 
         var isInsideLiteralOrComment: Bool {
-            inSingleQuote || inDoubleQuote || isInsideTemplateLiteralText || inLineComment || inBlockComment
+            inSingleQuote || inDoubleQuote || isInsideTemplateLiteralText || inLineComment || inBlockComment || inRegexLiteral
         }
     }
 
@@ -760,6 +763,8 @@ private extension EditorCommandEngine {
         let asterisk: unichar = 42
         let openBrace: unichar = 123
         let closeBrace: unichar = 125
+        let openBracket: unichar = 91
+        let closeBracket: unichar = 93
         let newline: unichar = 10
         let carriageReturn: unichar = 13
 
@@ -782,6 +787,57 @@ private extension EditorCommandEngine {
                 } else {
                     cursor += 1
                 }
+                continue
+            }
+
+            if analysis.inRegexLiteral {
+                if analysis.isEscaped {
+                    analysis.isEscaped = false
+                    if analysis.inRegexCharacterClass {
+                        analysis.regexCharacterClassHasContent = true
+                    }
+                    cursor += 1
+                    continue
+                }
+                if codeUnit == backslash {
+                    analysis.isEscaped = true
+                    cursor += 1
+                    continue
+                }
+                if codeUnit == openBracket, !analysis.inRegexCharacterClass {
+                    analysis.inRegexCharacterClass = true
+                    analysis.regexCharacterClassHasContent = false
+                    cursor += 1
+                    continue
+                }
+                if codeUnit == closeBracket, analysis.inRegexCharacterClass {
+                    if analysis.regexCharacterClassHasContent {
+                        analysis.inRegexCharacterClass = false
+                        analysis.regexCharacterClassHasContent = false
+                    } else {
+                        analysis.regexCharacterClassHasContent = true
+                    }
+                    cursor += 1
+                    continue
+                }
+                if codeUnit == slash, !analysis.inRegexCharacterClass {
+                    analysis.inRegexLiteral = false
+                    cursor += 1
+                    while cursor < nsText.length {
+                        let flagUnit = nsText.character(at: cursor)
+                        guard isJavaScriptIdentifierPart(flagUnit) else { break }
+                        cursor += 1
+                    }
+                    continue
+                }
+                if codeUnit == newline || codeUnit == carriageReturn {
+                    analysis.inRegexLiteral = false
+                    analysis.inRegexCharacterClass = false
+                    analysis.regexCharacterClassHasContent = false
+                } else if analysis.inRegexCharacterClass {
+                    analysis.regexCharacterClassHasContent = true
+                }
+                cursor += 1
                 continue
             }
 
@@ -849,15 +905,24 @@ private extension EditorCommandEngine {
                     cursor += 1
                     continue
                 }
-                if codeUnit == slash, nextCodeUnit == slash {
-                    analysis.inLineComment = true
-                    cursor += 2
-                    continue
-                }
-                if codeUnit == slash, nextCodeUnit == asterisk {
-                    analysis.inBlockComment = true
-                    cursor += 2
-                    continue
+                if codeUnit == slash {
+                    if nextCodeUnit == slash {
+                        analysis.inLineComment = true
+                        cursor += 2
+                        continue
+                    }
+                    if nextCodeUnit == asterisk {
+                        analysis.inBlockComment = true
+                        cursor += 2
+                        continue
+                    }
+                    if shouldStartJavaScriptRegexLiteral(in: nsText, at: cursor) {
+                        analysis.inRegexLiteral = true
+                        analysis.inRegexCharacterClass = false
+                        analysis.regexCharacterClassHasContent = false
+                        cursor += 1
+                        continue
+                    }
                 }
                 if codeUnit == openBrace {
                     currentTemplateExpressionDepth += 1
@@ -894,15 +959,24 @@ private extension EditorCommandEngine {
                 continue
             }
 
-            if codeUnit == slash, nextCodeUnit == slash {
-                analysis.inLineComment = true
-                cursor += 2
-                continue
-            }
-            if codeUnit == slash, nextCodeUnit == asterisk {
-                analysis.inBlockComment = true
-                cursor += 2
-                continue
+            if codeUnit == slash {
+                if nextCodeUnit == slash {
+                    analysis.inLineComment = true
+                    cursor += 2
+                    continue
+                }
+                if nextCodeUnit == asterisk {
+                    analysis.inBlockComment = true
+                    cursor += 2
+                    continue
+                }
+                if shouldStartJavaScriptRegexLiteral(in: nsText, at: cursor) {
+                    analysis.inRegexLiteral = true
+                    analysis.inRegexCharacterClass = false
+                    analysis.regexCharacterClassHasContent = false
+                    cursor += 1
+                    continue
+                }
             }
 
             cursor += 1
@@ -922,5 +996,103 @@ private extension EditorCommandEngine {
         let nsString = source as NSString
         let clampedOffset = min(max(0, offset), nsString.length)
         return nsString.lineRange(for: NSRange(location: clampedOffset, length: 0)).location
+    }
+
+    func shouldStartJavaScriptRegexLiteral(in source: NSString, at slashOffset: Int) -> Bool {
+        guard slashOffset >= 0, slashOffset < source.length else { return false }
+
+        var cursor = slashOffset - 1
+        while cursor >= 0 {
+            let codeUnit = source.character(at: cursor)
+            if codeUnit == 32 || codeUnit == 9 || codeUnit == 10 || codeUnit == 13 {
+                cursor -= 1
+                continue
+            }
+
+            if isInsideJavaScriptLineCommentOnlyLine(in: source, at: cursor) {
+                let lineStart = source.lineRange(for: NSRange(location: cursor, length: 0)).location
+                cursor = lineStart - 1
+                continue
+            }
+
+            if isJavaScriptIdentifierPart(codeUnit) {
+                var start = cursor
+                while start - 1 >= 0, isJavaScriptIdentifierPart(source.character(at: start - 1)) {
+                    start -= 1
+                }
+                let token = source.substring(with: NSRange(location: start, length: cursor - start + 1))
+                if [
+                    "return", "throw", "case", "delete", "void", "typeof", "instanceof", "new", "in", "of", "await",
+                    "yield", "else",
+                ].contains(token) {
+                    if let previousCodeUnit = previousNonWhitespaceCodeUnit(in: source, before: start),
+                       previousCodeUnit == 46 || previousCodeUnit == 63 // ".", "?"
+                    {
+                        return false
+                    }
+                    return true
+                }
+                return false
+            }
+
+            if (48...57).contains(Int(codeUnit)) || codeUnit == 41 || codeUnit == 93 || codeUnit == 125 {
+                return false
+            }
+            if codeUnit == 47 { // "/"
+                return false
+            }
+            if codeUnit == 46 { // "."
+                return false
+            }
+            if codeUnit == 34 || codeUnit == 39 || codeUnit == 96 { // "\"", "'", "`"
+                return false
+            }
+
+            if [
+                40, 91, 123, 44, 58, 59, 61, 33, 63, 43, 45, 42, 37, 38, 124, 94, 126, 60, 62,
+            ].contains(Int(codeUnit)) {
+                if (codeUnit == 43 || codeUnit == 45), previousNonWhitespaceCodeUnit(in: source, before: cursor) == codeUnit {
+                    return false
+                }
+                return true
+            }
+
+            return true
+        }
+
+        return true
+    }
+
+    func isJavaScriptIdentifierPart(_ codeUnit: unichar) -> Bool {
+        if codeUnit == 95 || codeUnit == 36 { // "_" and "$"
+            return true
+        }
+        if (48...57).contains(Int(codeUnit)) {
+            return true
+        }
+        guard let scalar = UnicodeScalar(codeUnit) else { return false }
+        return CharacterSet.letters.contains(scalar) || CharacterSet.nonBaseCharacters.contains(scalar)
+    }
+
+    func previousNonWhitespaceCodeUnit(in source: NSString, before location: Int) -> unichar? {
+        var cursor = location - 1
+        while cursor >= 0 {
+            let codeUnit = source.character(at: cursor)
+            if codeUnit == 32 || codeUnit == 9 || codeUnit == 10 || codeUnit == 13 {
+                cursor -= 1
+                continue
+            }
+            return codeUnit
+        }
+        return nil
+    }
+
+    func isInsideJavaScriptLineCommentOnlyLine(in source: NSString, at location: Int) -> Bool {
+        guard location >= 0, location < source.length else { return false }
+        let lineRange = source.lineRange(for: NSRange(location: location, length: 0))
+        let contentRange = lineContentRange(in: source, lineRange: lineRange)
+        guard contentRange.length > 0 else { return false }
+        let content = source.substring(with: contentRange)
+        return content.trimmingCharacters(in: .whitespacesAndNewlines).hasPrefix("//")
     }
 }
