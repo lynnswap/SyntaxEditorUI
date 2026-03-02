@@ -193,6 +193,16 @@ private extension EditorCommandEngine {
             }
 
             if input == "}" {
+                if let nextNonWhitespace = nextNonWhitespaceOffset(in: nsSource, from: range.location),
+                   character(in: nsSource, at: nextNonWhitespace) == input
+                {
+                    return EditorCommandResult(
+                        text: source,
+                        selectedRange: NSRange(location: nextNonWhitespace + 1, length: 0),
+                        refreshStartUTF16: lineStartUTF16Offset(in: source, around: range.location)
+                    )
+                }
+
                 if let result = outdentForClosingBrace(
                     source: source,
                     location: range.location,
@@ -603,6 +613,19 @@ private extension EditorCommandEngine {
         return nil
     }
 
+    func nextNonWhitespaceOffset(in source: NSString, from offset: Int) -> Int? {
+        var cursor = max(0, offset)
+        while cursor < source.length {
+            let ch = source.character(at: cursor)
+            if ch == 32 || ch == 9 || ch == 10 || ch == 13 {
+                cursor += 1
+                continue
+            }
+            return cursor
+        }
+        return nil
+    }
+
     func character(in source: NSString, at offset: Int) -> Character? {
         guard offset >= 0, offset < source.length else { return nil }
         let composedRange = source.rangeOfComposedCharacterSequence(at: offset)
@@ -642,7 +665,7 @@ private extension EditorCommandEngine {
         if language == .javascript {
             if hasOddUnescapedQuote(in: prefix, quote: "'") { return true }
             if hasOddUnescapedQuote(in: prefix, quote: "`") { return true }
-            if prefix.contains("//") { return true }
+            if hasLineCommentStartOutsideLiterals(in: prefix) { return true }
         }
 
         if language != .json {
@@ -674,6 +697,135 @@ private extension EditorCommandEngine {
             }
         }
         return count % 2 == 1
+    }
+
+    func hasLineCommentStartOutsideLiterals(in text: String) -> Bool {
+        let nsText = text as NSString
+        var cursor = 0
+        var inSingleQuote = false
+        var inDoubleQuote = false
+        var isEscaped = false
+        var templateExpressionDepthStack: [Int] = []
+        let singleQuote: unichar = 39
+        let doubleQuote: unichar = 34
+        let backtick: unichar = 96
+        let backslash: unichar = 92
+        let dollar: unichar = 36
+        let slash: unichar = 47
+        let openBrace: unichar = 123
+        let closeBrace: unichar = 125
+
+        while cursor < nsText.length {
+            let codeUnit = nsText.character(at: cursor)
+            let nextCodeUnit: unichar? = cursor + 1 < nsText.length ? nsText.character(at: cursor + 1) : nil
+
+            if isEscaped {
+                isEscaped = false
+                cursor += 1
+                continue
+            }
+
+            if inSingleQuote {
+                if codeUnit == backslash {
+                    isEscaped = true
+                } else if codeUnit == singleQuote {
+                    inSingleQuote = false
+                }
+                cursor += 1
+                continue
+            }
+
+            if inDoubleQuote {
+                if codeUnit == backslash {
+                    isEscaped = true
+                } else if codeUnit == doubleQuote {
+                    inDoubleQuote = false
+                }
+                cursor += 1
+                continue
+            }
+
+            if var currentTemplateExpressionDepth = templateExpressionDepthStack.last {
+                if currentTemplateExpressionDepth == 0 {
+                    if codeUnit == backslash {
+                        isEscaped = true
+                        cursor += 1
+                        continue
+                    }
+                    if codeUnit == backtick {
+                        templateExpressionDepthStack.removeLast()
+                        cursor += 1
+                        continue
+                    }
+                    if codeUnit == dollar, nextCodeUnit == openBrace {
+                        currentTemplateExpressionDepth = 1
+                        templateExpressionDepthStack[templateExpressionDepthStack.count - 1] = currentTemplateExpressionDepth
+                        cursor += 2
+                        continue
+                    }
+                    cursor += 1
+                    continue
+                }
+
+                if codeUnit == singleQuote {
+                    inSingleQuote = true
+                    cursor += 1
+                    continue
+                }
+                if codeUnit == doubleQuote {
+                    inDoubleQuote = true
+                    cursor += 1
+                    continue
+                }
+                if codeUnit == backtick {
+                    templateExpressionDepthStack.append(0)
+                    cursor += 1
+                    continue
+                }
+                if codeUnit == slash, nextCodeUnit == slash {
+                    return true
+                }
+                if codeUnit == openBrace {
+                    currentTemplateExpressionDepth += 1
+                    templateExpressionDepthStack[templateExpressionDepthStack.count - 1] = currentTemplateExpressionDepth
+                    cursor += 1
+                    continue
+                }
+                if codeUnit == closeBrace {
+                    currentTemplateExpressionDepth -= 1
+                    templateExpressionDepthStack[templateExpressionDepthStack.count - 1] = max(0, currentTemplateExpressionDepth)
+                    cursor += 1
+                    continue
+                }
+
+                cursor += 1
+                continue
+            }
+
+            if codeUnit == singleQuote {
+                inSingleQuote = true
+                cursor += 1
+                continue
+            }
+            if codeUnit == doubleQuote {
+                inDoubleQuote = true
+                cursor += 1
+                continue
+            }
+            if codeUnit == backtick {
+                templateExpressionDepthStack.append(0)
+                cursor += 1
+                continue
+            }
+
+            if codeUnit == slash, nextCodeUnit == slash {
+                return true
+            }
+
+            cursor += 1
+        }
+
+        return false
     }
 
     static func clampedRange(_ range: NSRange, utf16Length: Int) -> NSRange {

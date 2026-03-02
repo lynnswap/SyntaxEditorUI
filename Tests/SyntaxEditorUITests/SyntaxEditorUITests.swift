@@ -156,6 +156,21 @@ struct SyntaxEditorUITests {
         #expect(result?.selectedRange == NSRange(location: 2, length: 0))
     }
 
+    @Test("EditorCommandEngine skips existing closing brace after whitespace")
+    func editorCommandEngineSkipClosingBraceAfterWhitespace() {
+        let engine = EditorCommandEngine()
+        let source = "{\n    \n}"
+        let result = engine.transformInput(
+            source: source,
+            range: NSRange(location: 6, length: 0),
+            replacementText: "}",
+            language: .javascript
+        )
+
+        #expect(result?.text == source)
+        #expect(result?.selectedRange == NSRange(location: 8, length: 0))
+    }
+
     @Test("EditorCommandEngine inserts smart newline in brace block")
     func editorCommandEngineSmartNewline() {
         let engine = EditorCommandEngine()
@@ -321,6 +336,35 @@ struct SyntaxEditorUITests {
             source: "{\"a\":1}",
             selection: NSRange(location: 0, length: 7),
             language: .json
+        )
+
+        #expect(result == nil)
+    }
+
+    @Test("EditorCommandEngine auto-pairs quote after URL literal prefix")
+    func editorCommandEngineAutoPairQuoteAfterURLLiteral() {
+        let engine = EditorCommandEngine()
+        let source = "const url = \"https://a\"; const value = "
+        let result = engine.transformInput(
+            source: source,
+            range: NSRange(location: source.utf16.count, length: 0),
+            replacementText: "\"",
+            language: .javascript
+        )
+
+        #expect(result?.text == source + "\"\"")
+        #expect(result?.selectedRange == NSRange(location: source.utf16.count + 1, length: 0))
+    }
+
+    @Test("EditorCommandEngine suppresses quote auto-pair in template placeholder comments")
+    func editorCommandEngineSuppressQuoteAutoPairInTemplatePlaceholderComment() {
+        let engine = EditorCommandEngine()
+        let source = "const tpl = `${value // comment"
+        let result = engine.transformInput(
+            source: source,
+            range: NSRange(location: source.utf16.count, length: 0),
+            replacementText: "\"",
+            language: .javascript
         )
 
         #expect(result == nil)
