@@ -412,6 +412,10 @@ private extension EditorCommandEngine {
             return nil
         }
 
+        if segment.range(of: "/*") != nil || segment.range(of: "*/") != nil {
+            return nil
+        }
+
         let edits = [
             TextEdit(range: NSRange(location: targetLinesRange.location + targetLinesRange.length, length: 0), replacement: " */"),
             TextEdit(range: NSRange(location: targetLinesRange.location, length: 0), replacement: "/* "),

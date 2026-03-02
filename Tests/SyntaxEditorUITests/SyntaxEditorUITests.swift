@@ -369,6 +369,19 @@ struct SyntaxEditorUITests {
         #expect(result == nil)
     }
 
+    @Test("EditorCommandEngine does not wrap CSS selection containing block markers")
+    func editorCommandEngineCssCommentToggleNoopWhenSelectionContainsBlockMarkers() {
+        let engine = EditorCommandEngine()
+        let source = "color: red; /* note */\n"
+        let result = engine.toggleComment(
+            source: source,
+            selection: NSRange(location: 0, length: source.utf16.count),
+            language: .css
+        )
+
+        #expect(result == nil)
+    }
+
     @Test("EditorCommandEngine returns no-op for JSON comments")
     func editorCommandEngineJsonCommentNoop() {
         let engine = EditorCommandEngine()
