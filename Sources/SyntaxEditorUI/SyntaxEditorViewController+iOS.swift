@@ -29,6 +29,8 @@ public final class SyntaxEditorViewController: UIViewController, UITextViewDeleg
     private var matchedBracketRanges: [NSRange] = []
     @ObservationIgnored
     private var isApplyingUndoRedo = false
+    @ObservationIgnored
+    private var keyboardAccessoryModel: SyntaxEditorKeyboardAccessoryModel?
 
     public init(model: SyntaxEditorModel) {
         self.model = model
@@ -107,6 +109,7 @@ public final class SyntaxEditorViewController: UIViewController, UITextViewDeleg
             language: model.language,
             refreshStartUTF16: refreshStartUTF16
         )
+        refreshKeyboardAccessoryState()
     }
 
     public func textViewDidChangeSelection(_ textView: UITextView) {
@@ -160,6 +163,7 @@ public final class SyntaxEditorViewController: UIViewController, UITextViewDeleg
         applyLineWrappingConfiguration(lineWrappingEnabled: model.lineWrappingEnabled)
         textView.typingAttributes = baseAttributes()
         textView.inputAccessoryView = makeInputAccessoryView()
+        refreshKeyboardAccessoryState()
     }
 
     private func configureTraitChangeObservation() {
@@ -192,21 +196,29 @@ public final class SyntaxEditorViewController: UIViewController, UITextViewDeleg
     }
 
     private func makeInputAccessoryView() -> UIView {
-        let toolbar = UIToolbar()
-        toolbar.items = [
-            UIBarButtonItem(title: "Tab", style: .plain, target: self, action: #selector(handleIndentCommand)),
-            UIBarButtonItem(title: "⇤", style: .plain, target: self, action: #selector(handleOutdentCommand)),
-            UIBarButtonItem(title: "//", style: .plain, target: self, action: #selector(handleToggleCommentCommand)),
-            .flexibleSpace(),
-            UIBarButtonItem(title: "Undo", style: .plain, target: self, action: #selector(handleUndoCommand)),
-            UIBarButtonItem(title: "Redo", style: .plain, target: self, action: #selector(handleRedoCommand)),
-        ]
-        toolbar.sizeToFit()
-        return toolbar
+        let accessoryModel = SyntaxEditorKeyboardAccessoryModel(
+            onUndo: { [weak self] in
+                self?.handleUndoCommand()
+            },
+            onRedo: { [weak self] in
+                self?.handleRedoCommand()
+            },
+            onDismissKeyboard: { [weak self] in
+                self?.handleDismissKeyboardCommand()
+            }
+        )
+        keyboardAccessoryModel = accessoryModel
+        return SyntaxEditorKeyboardAccessoryView(model: accessoryModel)
     }
 
     private var activeUndoManager: UndoManager? {
         textView.undoManager ?? fallbackUndoManager
+    }
+
+    private func refreshKeyboardAccessoryState() {
+        guard let keyboardAccessoryModel else { return }
+        keyboardAccessoryModel.isUndoable = model.isEditable && (activeUndoManager?.canUndo ?? false)
+        keyboardAccessoryModel.isRedoable = model.isEditable && (activeUndoManager?.canRedo ?? false)
     }
 
     private func startModelObservation() {
@@ -243,6 +255,7 @@ public final class SyntaxEditorViewController: UIViewController, UITextViewDeleg
                 refreshStartUTF16: 0
             )
         }
+        refreshKeyboardAccessoryState()
     }
 
     private func applyObservedEditorState(
@@ -268,6 +281,7 @@ public final class SyntaxEditorViewController: UIViewController, UITextViewDeleg
                 refreshStartUTF16: 0
             )
         }
+        refreshKeyboardAccessoryState()
     }
 
     private func applyCommandResult(_ result: EditorCommandResult) {
@@ -331,6 +345,7 @@ public final class SyntaxEditorViewController: UIViewController, UITextViewDeleg
         } else {
             applyMatchingBracketHighlight()
         }
+        refreshKeyboardAccessoryState()
     }
 
     private func registerUndoAction(restore: EditorUndoState, counterpart: EditorUndoState) {
@@ -435,6 +450,7 @@ public final class SyntaxEditorViewController: UIViewController, UITextViewDeleg
         if !handled {
             activeUndoManager?.undo()
         }
+        refreshKeyboardAccessoryState()
     }
 
     @objc private func handleRedoCommand() {
@@ -447,6 +463,11 @@ public final class SyntaxEditorViewController: UIViewController, UITextViewDeleg
         if !handled {
             activeUndoManager?.redo()
         }
+        refreshKeyboardAccessoryState()
+    }
+
+    @objc private func handleDismissKeyboardCommand() {
+        view.window?.endEditing(true)
     }
 
     private func scheduleHighlight(
