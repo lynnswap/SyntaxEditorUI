@@ -14,11 +14,12 @@ struct SyntaxEditorUITests {
         #expect(SyntaxLanguage(normalizedRawValue: " javascript ") == .javascript)
         #expect(SyntaxLanguage(normalizedRawValue: "JS") == .javascript)
         #expect(SyntaxLanguage(normalizedRawValue: "JSON") == .json)
+        #expect(SyntaxLanguage(normalizedRawValue: "Swift") == .swift)
     }
 
     @Test("SyntaxLanguage rejects unsupported values")
     func syntaxLanguageRejectsUnsupportedValue() {
-        #expect(SyntaxLanguage(normalizedRawValue: "swift") == nil)
+        #expect(SyntaxLanguage(normalizedRawValue: "toml") == nil)
     }
 
     @Test("SyntaxEditorModel stores and mutates state on MainActor")
@@ -328,6 +329,28 @@ struct SyntaxEditorUITests {
             source: first?.text ?? "",
             selection: NSRange(location: 0, length: first?.text.utf16.count ?? 0),
             language: .javascript
+        )
+
+        #expect(second?.text == source)
+    }
+
+    @Test("EditorCommandEngine toggles Swift line comments")
+    func editorCommandEngineToggleSwiftComments() {
+        let engine = EditorCommandEngine()
+        let source = "let a = 1\nlet b = 2\n"
+
+        let first = engine.toggleComment(
+            source: source,
+            selection: NSRange(location: 0, length: source.utf16.count),
+            language: .swift
+        )
+
+        #expect(first?.text == "// let a = 1\n// let b = 2\n")
+
+        let second = engine.toggleComment(
+            source: first?.text ?? "",
+            selection: NSRange(location: 0, length: first?.text.utf16.count ?? 0),
+            language: .swift
         )
 
         #expect(second?.text == source)
@@ -930,6 +953,7 @@ struct SyntaxEditorUITests {
             (SyntaxLanguage.css, "body { color: red; }"),
             (SyntaxLanguage.javascript, "const answer = 42;"),
             (SyntaxLanguage.json, "{\"enabled\": true, \"count\": 1}"),
+            (SyntaxLanguage.swift, "let answer = 42"),
         ]
     )
     func highlighterProducesTokens(

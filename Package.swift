@@ -19,6 +19,7 @@ let package = Package(
         .package(url: "https://github.com/tree-sitter/tree-sitter-css", exact: "0.23.2"),
         .package(url: "https://github.com/tree-sitter/tree-sitter-javascript", exact: "0.23.1"),
         .package(url: "https://github.com/tree-sitter/tree-sitter-json", exact: "0.24.8"),
+        .package(url: "https://github.com/alex-pinkus/tree-sitter-swift", exact: "0.7.1-with-generated-files"),
         .package(url: "https://github.com/lynnswap/ObservationsCompat", exact: "0.3.1"),
     ],
     targets: [
@@ -29,6 +30,7 @@ let package = Package(
                 .product(name: "TreeSitterCSS", package: "tree-sitter-css"),
                 .product(name: "TreeSitterJavaScript", package: "tree-sitter-javascript"),
                 .product(name: "TreeSitterJSON", package: "tree-sitter-json"),
+                .product(name: "TreeSitterSwift", package: "tree-sitter-swift"),
                 .product(name: "ObservationsCompat", package: "observationscompat"),
             ],
             swiftSettings: [

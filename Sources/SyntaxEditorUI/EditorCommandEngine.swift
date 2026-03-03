@@ -97,8 +97,8 @@ struct EditorCommandEngine {
         language: SyntaxLanguage
     ) -> EditorCommandResult? {
         switch language {
-        case .javascript:
-            return toggleJavaScriptLineComment(source: source, selection: selection)
+        case .javascript, .swift:
+            return toggleLineComment(source: source, selection: selection)
         case .css:
             return toggleCSSBlockComment(source: source, selection: selection)
         case .json:
@@ -323,7 +323,7 @@ private extension EditorCommandEngine {
         )
     }
 
-    func toggleJavaScriptLineComment(source: String, selection: NSRange) -> EditorCommandResult? {
+    func toggleLineComment(source: String, selection: NSRange) -> EditorCommandResult? {
         let nsSource = source as NSString
         let safeSelection = Self.clampedRange(selection, utf16Length: nsSource.length)
         let lineRanges = selectedLineRanges(in: nsSource, selection: safeSelection)

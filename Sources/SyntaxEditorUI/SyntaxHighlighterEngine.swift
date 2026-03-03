@@ -3,6 +3,7 @@ import SwiftTreeSitter
 import TreeSitterCSS
 import TreeSitterJavaScript
 import TreeSitterJSON
+import TreeSitterSwift
 
 struct SyntaxHighlightToken {
     let range: NSRange
@@ -46,6 +47,12 @@ private struct SyntaxLanguageRegistry {
                 language: unsafe Language(tree_sitter_json()),
                 name: "JSON",
                 bundleName: "TreeSitterJSON_TreeSitterJSON"
+            ),
+            .init(
+                syntaxLanguage: .swift,
+                language: unsafe Language(tree_sitter_swift()),
+                name: "Swift",
+                bundleName: "TreeSitterSwift_TreeSitterSwift"
             ),
         ]
 

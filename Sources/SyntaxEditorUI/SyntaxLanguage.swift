@@ -4,6 +4,7 @@ public enum SyntaxLanguage: String, CaseIterable, Hashable, Sendable {
     case css
     case javascript
     case json
+    case swift
 
     public init?(normalizedRawValue: String) {
         let lowered = normalizedRawValue
@@ -17,6 +18,8 @@ public enum SyntaxLanguage: String, CaseIterable, Hashable, Sendable {
             self = .javascript
         case "json":
             self = .json
+        case "swift":
+            self = .swift
         default:
             return nil
         }
