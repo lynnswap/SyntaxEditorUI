@@ -19,7 +19,7 @@
   - JSON comment toggle is intentionally no-op
   - Pair-aware backspace deletion
   - Matching bracket highlight
-- iOS input accessory actions: `Tab`, `Outdent`, `Comment`, `Undo`, `Redo`
+- iOS input accessory actions: `Undo`, `Redo`, `Dismiss Keyboard`
 
 ## Shortcuts
 
