@@ -10,36 +10,82 @@ struct SyntaxHighlightToken {
 }
 
 private struct SyntaxLanguageRegistry {
+    private struct LanguageSpecification {
+        let syntaxLanguage: SyntaxLanguage
+        let language: Language
+        let name: String
+        let bundleName: String
+    }
+
+    private struct ResolvedConfiguration {
+        let configuration: LanguageConfiguration
+        let queriesURL: URL
+    }
+
     let configurations: [SyntaxLanguage: LanguageConfiguration]
 
     static let shared = SyntaxLanguageRegistry()
 
     init() {
         var map: [SyntaxLanguage: LanguageConfiguration] = [:]
-        let cssLanguage = unsafe Language(tree_sitter_css())
-        let javaScriptLanguage = unsafe Language(tree_sitter_javascript())
-        let jsonLanguage = unsafe Language(tree_sitter_json())
+        let specifications: [LanguageSpecification] = [
+            .init(
+                syntaxLanguage: .css,
+                language: unsafe Language(tree_sitter_css()),
+                name: "CSS",
+                bundleName: "TreeSitterCSS_TreeSitterCSS"
+            ),
+            .init(
+                syntaxLanguage: .javascript,
+                language: unsafe Language(tree_sitter_javascript()),
+                name: "JavaScript",
+                bundleName: "TreeSitterJavaScript_TreeSitterJavaScript"
+            ),
+            .init(
+                syntaxLanguage: .json,
+                language: unsafe Language(tree_sitter_json()),
+                name: "JSON",
+                bundleName: "TreeSitterJSON_TreeSitterJSON"
+            ),
+        ]
 
-        if let config = Self.makeConfiguration(
-            language: cssLanguage,
-            name: "CSS",
-            bundleName: "TreeSitterCSS_TreeSitterCSS"
-        ) {
-            map[.css] = config
+        var resolvedQueryDirectories: [URL] = []
+
+        for specification in specifications {
+            if let resolved = Self.makeConfiguration(
+                language: specification.language,
+                name: specification.name,
+                bundleName: specification.bundleName
+            ) {
+                map[specification.syntaxLanguage] = resolved.configuration
+                resolvedQueryDirectories.append(resolved.queriesURL)
+            }
         }
-        if let config = Self.makeConfiguration(
-            language: javaScriptLanguage,
-            name: "JavaScript",
-            bundleName: "TreeSitterJavaScript_TreeSitterJavaScript"
-        ) {
-            map[.javascript] = config
-        }
-        if let config = Self.makeConfiguration(
-            language: jsonLanguage,
-            name: "JSON",
-            bundleName: "TreeSitterJSON_TreeSitterJSON"
-        ) {
-            map[.json] = config
+
+        if map.count < specifications.count {
+            let bundleContainerDirectories = resolvedQueryDirectories.compactMap {
+                Self.bundleContainerDirectory(forQueriesDirectory: $0)
+            }
+
+            for specification in specifications where map[specification.syntaxLanguage] == nil {
+                let siblingQueryDirectories = bundleContainerDirectories.flatMap { container in
+                    let siblingBundle = container
+                        .appendingPathComponent("\(specification.bundleName).bundle", isDirectory: true)
+                    return [
+                        siblingBundle.appendingPathComponent("queries", isDirectory: true),
+                        siblingBundle.appendingPathComponent("Contents/Resources/queries", isDirectory: true),
+                    ]
+                }
+
+                if let resolved = Self.makeConfiguration(
+                    language: specification.language,
+                    name: specification.name,
+                    bundleName: specification.bundleName,
+                    additionalQueryDirectories: siblingQueryDirectories
+                ) {
+                    map[specification.syntaxLanguage] = resolved.configuration
+                }
+            }
         }
 
         self.configurations = map
@@ -51,26 +97,55 @@ private struct SyntaxLanguageRegistry {
 }
 
 private extension SyntaxLanguageRegistry {
-    static func makeConfiguration(
+    private static func makeConfiguration(
         language: Language,
         name: String,
-        bundleName: String
-    ) -> LanguageConfiguration? {
-        for queriesURL in queryDirectoryCandidates(for: bundleName) {
+        bundleName: String,
+        additionalQueryDirectories: [URL] = []
+    ) -> ResolvedConfiguration? {
+        var candidates: [URL] = []
+        var seenPaths = Set<String>()
+
+        for queriesURL in additionalQueryDirectories + queryDirectoryCandidates(for: bundleName) {
+            let standardized = queriesURL.standardizedFileURL
+            guard seenPaths.insert(standardized.path).inserted else {
+                continue
+            }
+            guard FileManager.default.fileExists(atPath: standardized.path) else {
+                continue
+            }
+            candidates.append(standardized)
+        }
+
+        for queriesURL in candidates {
             if let configuration = try? LanguageConfiguration(
                 language,
                 name: name,
                 queriesURL: queriesURL
             ), configuration.queries[.highlights] != nil {
-                return configuration
+                return ResolvedConfiguration(configuration: configuration, queriesURL: queriesURL)
             }
         }
         return nil
     }
 
+    private static func bundleContainerDirectory(forQueriesDirectory queriesURL: URL) -> URL? {
+        let components = queriesURL.standardizedFileURL.pathComponents
+        guard let bundleComponentIndex = components.lastIndex(where: { $0.hasSuffix(".bundle") }) else {
+            return nil
+        }
+
+        var bundleContainer = URL(fileURLWithPath: "/", isDirectory: true)
+        for component in components[1..<bundleComponentIndex] {
+            bundleContainer.appendPathComponent(component, isDirectory: true)
+        }
+        return bundleContainer.standardizedFileURL
+    }
+
     static func queryDirectoryCandidates(for bundleName: String) -> [URL] {
         let bundleFilename = "\(bundleName).bundle"
         var roots: [URL] = []
+        let fileManager = FileManager.default
 
         if let resourceURL = Bundle.main.resourceURL {
             roots.append(resourceURL)
@@ -91,7 +166,6 @@ private extension SyntaxLanguageRegistry {
         }
 
         var candidates: [URL] = []
-        let fileManager = FileManager.default
 
         for root in uniqueRoots {
             let bundleURL = root.appendingPathComponent(bundleFilename, isDirectory: true)
