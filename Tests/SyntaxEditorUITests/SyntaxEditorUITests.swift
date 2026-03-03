@@ -475,6 +475,49 @@ struct SyntaxEditorUITests {
         #expect(result == nil)
     }
 
+    @Test("EditorCommandEngine auto-pairs Swift quote inside interpolation expression")
+    func editorCommandEngineAutoPairSwiftQuoteInsideInterpolationExpression() {
+        let engine = EditorCommandEngine()
+        let source = "let value = \"foo \\(bar + "
+        let result = engine.transformInput(
+            source: source,
+            range: NSRange(location: source.utf16.count, length: 0),
+            replacementText: "\"",
+            language: .swift
+        )
+
+        #expect(result?.text == source + "\"\"")
+        #expect(result?.selectedRange == NSRange(location: source.utf16.count + 1, length: 0))
+    }
+
+    @Test("EditorCommandEngine suppresses Swift quote auto-pair after escaped interpolation marker")
+    func editorCommandEngineSuppressSwiftQuoteAutoPairAfterEscapedInterpolationMarker() {
+        let engine = EditorCommandEngine()
+        let source = "let value = \"foo \\\\("
+        let result = engine.transformInput(
+            source: source,
+            range: NSRange(location: source.utf16.count, length: 0),
+            replacementText: "\"",
+            language: .swift
+        )
+
+        #expect(result == nil)
+    }
+
+    @Test("EditorCommandEngine keeps raw multiline Swift string open until hash-delimited close")
+    func editorCommandEngineKeepsRawMultilineSwiftStringOpenUntilHashClose() {
+        let engine = EditorCommandEngine()
+        let source = "let text = #\"\"\"\ninner \"\"\" still open "
+        let result = engine.transformInput(
+            source: source,
+            range: NSRange(location: source.utf16.count, length: 0),
+            replacementText: "\"",
+            language: .swift
+        )
+
+        #expect(result == nil)
+    }
+
     @Test("EditorCommandEngine auto-pairs CSS quote after comment marker inside string literal")
     func editorCommandEngineAutoPairCssQuoteAfterCommentMarkerInsideStringLiteral() {
         let engine = EditorCommandEngine()
