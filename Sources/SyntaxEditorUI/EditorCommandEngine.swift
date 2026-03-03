@@ -699,10 +699,16 @@ private extension EditorCommandEngine {
             return analyzeCSSPrefix(prefix).isInsideLiteralOrComment
         }
 
+        if language == .swift {
+            let prefix = source.substring(to: clampedLocation)
+            return analyzeSwiftPrefix(prefix).isInsideLiteralOrComment
+        }
+
         let lineRange = source.lineRange(for: NSRange(location: clampedLocation, length: 0))
-        let prefixLength = max(0, clampedLocation - lineRange.location)
-        let prefix = source.substring(with: NSRange(location: lineRange.location, length: prefixLength))
-        if hasOddUnescapedQuote(in: prefix, quote: "\"") { return true }
+        let linePrefixLength = max(0, clampedLocation - lineRange.location)
+        let linePrefix = source.substring(with: NSRange(location: lineRange.location, length: linePrefixLength))
+
+        if hasOddUnescapedQuote(in: linePrefix, quote: "\"") { return true }
 
         if language != .json {
             let before = source.substring(to: clampedLocation)
@@ -837,6 +843,125 @@ private extension EditorCommandEngine {
         var isInsideLiteralOrComment: Bool {
             inSingleQuote || inDoubleQuote || isInsideTemplateLiteralText || inLineComment || inBlockComment || inRegexLiteral
         }
+    }
+
+    struct SwiftPrefixAnalysis {
+        var inLineComment = false
+        var blockCommentDepth = 0
+        var inDoubleQuote = false
+        var inMultilineString = false
+        var isEscaped = false
+
+        var isInsideLiteralOrComment: Bool {
+            inLineComment || blockCommentDepth > 0 || inDoubleQuote || inMultilineString
+        }
+    }
+
+    func analyzeSwiftPrefix(_ text: String) -> SwiftPrefixAnalysis {
+        let nsText = text as NSString
+        var analysis = SwiftPrefixAnalysis()
+        var cursor = 0
+
+        let slash: unichar = 47
+        let asterisk: unichar = 42
+        let doubleQuote: unichar = 34
+        let backslash: unichar = 92
+        let lineFeed: unichar = 10
+        let carriageReturn: unichar = 13
+
+        while cursor < nsText.length {
+            let codeUnit = nsText.character(at: cursor)
+            let nextCodeUnit: unichar? = cursor + 1 < nsText.length ? nsText.character(at: cursor + 1) : nil
+            let thirdCodeUnit: unichar? = cursor + 2 < nsText.length ? nsText.character(at: cursor + 2) : nil
+
+            if analysis.inLineComment {
+                if codeUnit == lineFeed || codeUnit == carriageReturn {
+                    analysis.inLineComment = false
+                }
+                cursor += 1
+                continue
+            }
+
+            if analysis.blockCommentDepth > 0 {
+                if codeUnit == slash, nextCodeUnit == asterisk {
+                    analysis.blockCommentDepth += 1
+                    cursor += 2
+                    continue
+                }
+
+                if codeUnit == asterisk, nextCodeUnit == slash {
+                    analysis.blockCommentDepth -= 1
+                    cursor += 2
+                    continue
+                }
+
+                cursor += 1
+                continue
+            }
+
+            if analysis.inMultilineString {
+                if codeUnit == doubleQuote, nextCodeUnit == doubleQuote, thirdCodeUnit == doubleQuote {
+                    analysis.inMultilineString = false
+                    cursor += 3
+                    continue
+                }
+
+                cursor += 1
+                continue
+            }
+
+            if analysis.inDoubleQuote {
+                if analysis.isEscaped {
+                    analysis.isEscaped = false
+                    cursor += 1
+                    continue
+                }
+
+                if codeUnit == backslash {
+                    analysis.isEscaped = true
+                    cursor += 1
+                    continue
+                }
+
+                if codeUnit == doubleQuote {
+                    analysis.inDoubleQuote = false
+                    cursor += 1
+                    continue
+                }
+
+                cursor += 1
+                continue
+            }
+
+            if codeUnit == slash, nextCodeUnit == slash {
+                analysis.inLineComment = true
+                cursor += 2
+                continue
+            }
+
+            if codeUnit == slash, nextCodeUnit == asterisk {
+                analysis.blockCommentDepth = 1
+                cursor += 2
+                continue
+            }
+
+            if codeUnit == doubleQuote, nextCodeUnit == doubleQuote, thirdCodeUnit == doubleQuote {
+                analysis.inMultilineString = true
+                cursor += 3
+                continue
+            }
+
+            if codeUnit == doubleQuote {
+                analysis.inDoubleQuote = true
+                analysis.isEscaped = false
+                cursor += 1
+                continue
+            }
+
+            cursor += 1
+        }
+
+        return analysis
     }
 
     func analyzeJavaScriptPrefix(_ text: String) -> JavaScriptPrefixAnalysis {

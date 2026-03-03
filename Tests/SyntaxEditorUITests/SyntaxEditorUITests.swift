@@ -432,6 +432,49 @@ struct SyntaxEditorUITests {
         #expect(result?.selectedRange == NSRange(location: source.utf16.count + 1, length: 0))
     }
 
+    @Test("EditorCommandEngine suppresses Swift quote auto-pair inside line comment")
+    func editorCommandEngineSuppressSwiftQuoteAutoPairInsideLineComment() {
+        let engine = EditorCommandEngine()
+        let source = "// note: "
+        let result = engine.transformInput(
+            source: source,
+            range: NSRange(location: source.utf16.count, length: 0),
+            replacementText: "\"",
+            language: .swift
+        )
+
+        #expect(result == nil)
+    }
+
+    @Test("EditorCommandEngine auto-pairs Swift quote after URL literal prefix")
+    func editorCommandEngineAutoPairSwiftQuoteAfterURLLiteral() {
+        let engine = EditorCommandEngine()
+        let source = "let url = \"https://a\"; let value = "
+        let result = engine.transformInput(
+            source: source,
+            range: NSRange(location: source.utf16.count, length: 0),
+            replacementText: "\"",
+            language: .swift
+        )
+
+        #expect(result?.text == source + "\"\"")
+        #expect(result?.selectedRange == NSRange(location: source.utf16.count + 1, length: 0))
+    }
+
+    @Test("EditorCommandEngine suppresses Swift quote auto-pair inside multiline string")
+    func editorCommandEngineSuppressSwiftQuoteAutoPairInsideMultilineString() {
+        let engine = EditorCommandEngine()
+        let source = "let text = \"\"\"\nhello "
+        let result = engine.transformInput(
+            source: source,
+            range: NSRange(location: source.utf16.count, length: 0),
+            replacementText: "\"",
+            language: .swift
+        )
+
+        #expect(result == nil)
+    }
+
     @Test("EditorCommandEngine auto-pairs CSS quote after comment marker inside string literal")
     func editorCommandEngineAutoPairCssQuoteAfterCommentMarkerInsideStringLiteral() {
         let engine = EditorCommandEngine()
