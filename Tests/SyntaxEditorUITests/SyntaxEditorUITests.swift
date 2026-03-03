@@ -14,11 +14,12 @@ struct SyntaxEditorUITests {
         #expect(SyntaxLanguage(normalizedRawValue: " javascript ") == .javascript)
         #expect(SyntaxLanguage(normalizedRawValue: "JS") == .javascript)
         #expect(SyntaxLanguage(normalizedRawValue: "JSON") == .json)
+        #expect(SyntaxLanguage(normalizedRawValue: "Swift") == .swift)
     }
 
     @Test("SyntaxLanguage rejects unsupported values")
     func syntaxLanguageRejectsUnsupportedValue() {
-        #expect(SyntaxLanguage(normalizedRawValue: "swift") == nil)
+        #expect(SyntaxLanguage(normalizedRawValue: "toml") == nil)
     }
 
     @Test("SyntaxEditorModel stores and mutates state on MainActor")
@@ -333,6 +334,28 @@ struct SyntaxEditorUITests {
         #expect(second?.text == source)
     }
 
+    @Test("EditorCommandEngine toggles Swift line comments")
+    func editorCommandEngineToggleSwiftComments() {
+        let engine = EditorCommandEngine()
+        let source = "let a = 1\nlet b = 2\n"
+
+        let first = engine.toggleComment(
+            source: source,
+            selection: NSRange(location: 0, length: source.utf16.count),
+            language: .swift
+        )
+
+        #expect(first?.text == "// let a = 1\n// let b = 2\n")
+
+        let second = engine.toggleComment(
+            source: first?.text ?? "",
+            selection: NSRange(location: 0, length: first?.text.utf16.count ?? 0),
+            language: .swift
+        )
+
+        #expect(second?.text == source)
+    }
+
     @Test("EditorCommandEngine toggles CSS block comment")
     func editorCommandEngineToggleCSSComment() {
         let engine = EditorCommandEngine()
@@ -407,6 +430,92 @@ struct SyntaxEditorUITests {
 
         #expect(result?.text == source + "\"\"")
         #expect(result?.selectedRange == NSRange(location: source.utf16.count + 1, length: 0))
+    }
+
+    @Test("EditorCommandEngine suppresses Swift quote auto-pair inside line comment")
+    func editorCommandEngineSuppressSwiftQuoteAutoPairInsideLineComment() {
+        let engine = EditorCommandEngine()
+        let source = "// note: "
+        let result = engine.transformInput(
+            source: source,
+            range: NSRange(location: source.utf16.count, length: 0),
+            replacementText: "\"",
+            language: .swift
+        )
+
+        #expect(result == nil)
+    }
+
+    @Test("EditorCommandEngine auto-pairs Swift quote after URL literal prefix")
+    func editorCommandEngineAutoPairSwiftQuoteAfterURLLiteral() {
+        let engine = EditorCommandEngine()
+        let source = "let url = \"https://a\"; let value = "
+        let result = engine.transformInput(
+            source: source,
+            range: NSRange(location: source.utf16.count, length: 0),
+            replacementText: "\"",
+            language: .swift
+        )
+
+        #expect(result?.text == source + "\"\"")
+        #expect(result?.selectedRange == NSRange(location: source.utf16.count + 1, length: 0))
+    }
+
+    @Test("EditorCommandEngine suppresses Swift quote auto-pair inside multiline string")
+    func editorCommandEngineSuppressSwiftQuoteAutoPairInsideMultilineString() {
+        let engine = EditorCommandEngine()
+        let source = "let text = \"\"\"\nhello "
+        let result = engine.transformInput(
+            source: source,
+            range: NSRange(location: source.utf16.count, length: 0),
+            replacementText: "\"",
+            language: .swift
+        )
+
+        #expect(result == nil)
+    }
+
+    @Test("EditorCommandEngine auto-pairs Swift quote inside interpolation expression")
+    func editorCommandEngineAutoPairSwiftQuoteInsideInterpolationExpression() {
+        let engine = EditorCommandEngine()
+        let source = "let value = \"foo \\(bar + "
+        let result = engine.transformInput(
+            source: source,
+            range: NSRange(location: source.utf16.count, length: 0),
+            replacementText: "\"",
+            language: .swift
+        )
+
+        #expect(result?.text == source + "\"\"")
+        #expect(result?.selectedRange == NSRange(location: source.utf16.count + 1, length: 0))
+    }
+
+    @Test("EditorCommandEngine suppresses Swift quote auto-pair after escaped interpolation marker")
+    func editorCommandEngineSuppressSwiftQuoteAutoPairAfterEscapedInterpolationMarker() {
+        let engine = EditorCommandEngine()
+        let source = "let value = \"foo \\\\("
+        let result = engine.transformInput(
+            source: source,
+            range: NSRange(location: source.utf16.count, length: 0),
+            replacementText: "\"",
+            language: .swift
+        )
+
+        #expect(result == nil)
+    }
+
+    @Test("EditorCommandEngine keeps raw multiline Swift string open until hash-delimited close")
+    func editorCommandEngineKeepsRawMultilineSwiftStringOpenUntilHashClose() {
+        let engine = EditorCommandEngine()
+        let source = "let text = #\"\"\"\ninner \"\"\" still open "
+        let result = engine.transformInput(
+            source: source,
+            range: NSRange(location: source.utf16.count, length: 0),
+            replacementText: "\"",
+            language: .swift
+        )
+
+        #expect(result == nil)
     }
 
     @Test("EditorCommandEngine auto-pairs CSS quote after comment marker inside string literal")
@@ -930,6 +1039,7 @@ struct SyntaxEditorUITests {
             (SyntaxLanguage.css, "body { color: red; }"),
             (SyntaxLanguage.javascript, "const answer = 42;"),
             (SyntaxLanguage.json, "{\"enabled\": true, \"count\": 1}"),
+            (SyntaxLanguage.swift, "let answer = 42"),
         ]
     )
     func highlighterProducesTokens(

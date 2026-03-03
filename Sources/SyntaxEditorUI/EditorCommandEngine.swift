@@ -97,8 +97,8 @@ struct EditorCommandEngine {
         language: SyntaxLanguage
     ) -> EditorCommandResult? {
         switch language {
-        case .javascript:
-            return toggleJavaScriptLineComment(source: source, selection: selection)
+        case .javascript, .swift:
+            return toggleLineComment(source: source, selection: selection)
         case .css:
             return toggleCSSBlockComment(source: source, selection: selection)
         case .json:
@@ -323,7 +323,7 @@ private extension EditorCommandEngine {
         )
     }
 
-    func toggleJavaScriptLineComment(source: String, selection: NSRange) -> EditorCommandResult? {
+    func toggleLineComment(source: String, selection: NSRange) -> EditorCommandResult? {
         let nsSource = source as NSString
         let safeSelection = Self.clampedRange(selection, utf16Length: nsSource.length)
         let lineRanges = selectedLineRanges(in: nsSource, selection: safeSelection)
@@ -699,10 +699,16 @@ private extension EditorCommandEngine {
             return analyzeCSSPrefix(prefix).isInsideLiteralOrComment
         }
 
+        if language == .swift {
+            let prefix = source.substring(to: clampedLocation)
+            return analyzeSwiftPrefix(prefix).isInsideLiteralOrComment
+        }
+
         let lineRange = source.lineRange(for: NSRange(location: clampedLocation, length: 0))
-        let prefixLength = max(0, clampedLocation - lineRange.location)
-        let prefix = source.substring(with: NSRange(location: lineRange.location, length: prefixLength))
-        if hasOddUnescapedQuote(in: prefix, quote: "\"") { return true }
+        let linePrefixLength = max(0, clampedLocation - lineRange.location)
+        let linePrefix = source.substring(with: NSRange(location: lineRange.location, length: linePrefixLength))
+
+        if hasOddUnescapedQuote(in: linePrefix, quote: "\"") { return true }
 
         if language != .json {
             let before = source.substring(to: clampedLocation)
@@ -837,6 +843,273 @@ private extension EditorCommandEngine {
         var isInsideLiteralOrComment: Bool {
             inSingleQuote || inDoubleQuote || isInsideTemplateLiteralText || inLineComment || inBlockComment || inRegexLiteral
         }
+    }
+
+    struct SwiftPrefixAnalysis {
+        var inLineComment = false
+        var blockCommentDepth = 0
+        var inStringLiteralText = false
+
+        var isInsideLiteralOrComment: Bool {
+            inLineComment || blockCommentDepth > 0 || inStringLiteralText
+        }
+    }
+
+    struct SwiftStringStart {
+        let hashCount: Int
+        let isMultiline: Bool
+        let openerLength: Int
+    }
+
+    struct SwiftStringContext {
+        let hashCount: Int
+        let isMultiline: Bool
+        var isEscaped = false
+    }
+
+    enum SwiftLexicalContext {
+        case string(SwiftStringContext)
+        case interpolation(parenDepth: Int)
+    }
+
+    func swiftStringStart(in source: NSString, at offset: Int) -> SwiftStringStart? {
+        guard offset >= 0, offset < source.length else { return nil }
+
+        let hash: unichar = 35
+        let quote: unichar = 34
+
+        var cursor = offset
+        var hashCount = 0
+        while cursor < source.length, source.character(at: cursor) == hash {
+            hashCount += 1
+            cursor += 1
+        }
+
+        guard cursor < source.length, source.character(at: cursor) == quote else {
+            return nil
+        }
+
+        let isMultiline = cursor + 2 < source.length &&
+            source.character(at: cursor + 1) == quote &&
+            source.character(at: cursor + 2) == quote
+
+        let openerLength = hashCount + (isMultiline ? 3 : 1)
+        return SwiftStringStart(
+            hashCount: hashCount,
+            isMultiline: isMultiline,
+            openerLength: openerLength
+        )
+    }
+
+    func swiftInterpolationOpenerLength(
+        in source: NSString,
+        at offset: Int,
+        hashCount: Int
+    ) -> Int? {
+        guard offset >= 0, offset < source.length else { return nil }
+
+        let backslash: unichar = 92
+        let hash: unichar = 35
+        let openParen: unichar = 40
+
+        guard source.character(at: offset) == backslash else { return nil }
+        var cursor = offset + 1
+
+        for _ in 0..<hashCount {
+            guard cursor < source.length, source.character(at: cursor) == hash else {
+                return nil
+            }
+            cursor += 1
+        }
+
+        guard cursor < source.length, source.character(at: cursor) == openParen else {
+            return nil
+        }
+
+        return cursor - offset + 1
+    }
+
+    func swiftStringCloseLength(
+        in source: NSString,
+        at offset: Int,
+        context: SwiftStringContext
+    ) -> Int? {
+        guard offset >= 0, offset < source.length else { return nil }
+
+        let quote: unichar = 34
+        let hash: unichar = 35
+
+        if context.isMultiline {
+            guard offset + 2 < source.length,
+                  source.character(at: offset) == quote,
+                  source.character(at: offset + 1) == quote,
+                  source.character(at: offset + 2) == quote
+            else {
+                return nil
+            }
+
+            var cursor = offset + 3
+            for _ in 0..<context.hashCount {
+                guard cursor < source.length, source.character(at: cursor) == hash else {
+                    return nil
+                }
+                cursor += 1
+            }
+            return cursor - offset
+        }
+
+        guard source.character(at: offset) == quote else {
+            return nil
+        }
+
+        var cursor = offset + 1
+        for _ in 0..<context.hashCount {
+            guard cursor < source.length, source.character(at: cursor) == hash else {
+                return nil
+            }
+            cursor += 1
+        }
+        return cursor - offset
+    }
+
+    func analyzeSwiftPrefix(_ text: String) -> SwiftPrefixAnalysis {
+        let nsText = text as NSString
+        var contexts: [SwiftLexicalContext] = []
+        var inLineComment = false
+        var blockCommentDepth = 0
+        var cursor = 0
+
+        let slash: unichar = 47
+        let asterisk: unichar = 42
+        let backslash: unichar = 92
+        let lineFeed: unichar = 10
+        let carriageReturn: unichar = 13
+        let openParen: unichar = 40
+        let closeParen: unichar = 41
+
+        while cursor < nsText.length {
+            let codeUnit = nsText.character(at: cursor)
+            let nextCodeUnit: unichar? = cursor + 1 < nsText.length ? nsText.character(at: cursor + 1) : nil
+
+            if inLineComment {
+                if codeUnit == lineFeed || codeUnit == carriageReturn {
+                    inLineComment = false
+                }
+                cursor += 1
+                continue
+            }
+
+            if blockCommentDepth > 0 {
+                if codeUnit == slash, nextCodeUnit == asterisk {
+                    blockCommentDepth += 1
+                    cursor += 2
+                    continue
+                }
+
+                if codeUnit == asterisk, nextCodeUnit == slash {
+                    blockCommentDepth -= 1
+                    cursor += 2
+                    continue
+                }
+
+                cursor += 1
+                continue
+            }
+
+            if case .string(var stringContext) = contexts.last {
+                if stringContext.hashCount == 0, stringContext.isEscaped {
+                    stringContext.isEscaped = false
+                    contexts[contexts.count - 1] = .string(stringContext)
+                    cursor += 1
+                    continue
+                }
+
+                if let interpolationLength = swiftInterpolationOpenerLength(
+                    in: nsText,
+                    at: cursor,
+                    hashCount: stringContext.hashCount
+                ) {
+                    contexts.append(.interpolation(parenDepth: 1))
+                    cursor += interpolationLength
+                    continue
+                }
+
+                if stringContext.hashCount == 0 {
+                    if codeUnit == backslash {
+                        stringContext.isEscaped = true
+                        contexts[contexts.count - 1] = .string(stringContext)
+                        cursor += 1
+                        continue
+                    }
+                }
+
+                if let closeLength = swiftStringCloseLength(
+                    in: nsText,
+                    at: cursor,
+                    context: stringContext
+                ) {
+                    _ = contexts.popLast()
+                    cursor += closeLength
+                    continue
+                }
+
+                cursor += 1
+                continue
+            }
+
+            if case .interpolation(let parenDepth) = contexts.last {
+                if codeUnit == openParen {
+                    contexts[contexts.count - 1] = .interpolation(parenDepth: parenDepth + 1)
+                    cursor += 1
+                    continue
+                }
+
+                if codeUnit == closeParen {
+                    if parenDepth == 1 {
+                        _ = contexts.popLast()
+                    } else {
+                        contexts[contexts.count - 1] = .interpolation(parenDepth: parenDepth - 1)
+                    }
+                    cursor += 1
+                    continue
+                }
+            }
+
+            if codeUnit == slash, nextCodeUnit == slash {
+                inLineComment = true
+                cursor += 2
+                continue
+            }
+
+            if codeUnit == slash, nextCodeUnit == asterisk {
+                blockCommentDepth = 1
+                cursor += 2
+                continue
+            }
+
+            if let start = swiftStringStart(in: nsText, at: cursor) {
+                contexts.append(
+                    .string(
+                        SwiftStringContext(
+                            hashCount: start.hashCount,
+                            isMultiline: start.isMultiline
+                        )
+                    )
+                )
+                cursor += start.openerLength
+                continue
+            }
+
+            cursor += 1
+        }
+
+        var analysis = SwiftPrefixAnalysis()
+        analysis.inLineComment = inLineComment
+        analysis.blockCommentDepth = blockCommentDepth
+        if case .string = contexts.last {
+            analysis.inStringLiteralText = true
+        }
+        return analysis
     }
 
     func analyzeJavaScriptPrefix(_ text: String) -> JavaScriptPrefixAnalysis {

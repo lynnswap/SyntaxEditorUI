@@ -11,11 +11,12 @@
   - CSS
   - JavaScript
   - JSON
+  - Swift
 - Core editing capabilities:
   - Auto-pair insertion: `() [] {} "" '' ```
   - Smart newline indentation (4 spaces)
   - Line indent / outdent (`Tab`, `Shift-Tab`, `Cmd+]`, `Cmd+[`)
-  - Comment toggle (`Cmd+/`) for JavaScript and CSS
+  - Comment toggle (`Cmd+/`) for JavaScript, CSS, and Swift
   - JSON comment toggle is intentionally no-op
   - Pair-aware backspace deletion
   - Matching bracket highlight
@@ -27,7 +28,7 @@
 - `Shift-Tab`: Outdent
 - `Cmd+]`: Indent
 - `Cmd+[` : Outdent
-- `Cmd+/`: Toggle comment (JavaScript/CSS)
+- `Cmd+/`: Toggle comment (JavaScript/CSS/Swift)
 - `Cmd+Z`: Undo
 - `Shift+Cmd+Z`: Redo
 
