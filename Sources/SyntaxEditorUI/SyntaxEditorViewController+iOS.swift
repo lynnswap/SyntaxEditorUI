@@ -1,6 +1,6 @@
 #if canImport(UIKit)
 import Observation
-import ObservationsCompat
+import ObservationBridge
 import UIKit
 
 @MainActor
@@ -31,6 +31,8 @@ public final class SyntaxEditorViewController: UIViewController, UITextViewDeleg
     private var isApplyingUndoRedo = false
     @ObservationIgnored
     private var keyboardAccessoryModel: SyntaxEditorKeyboardAccessoryModel?
+    @ObservationIgnored
+    private var observationHandles = Set<ObservationHandle>()
 
     public init(model: SyntaxEditorModel) {
         self.model = model
@@ -222,13 +224,15 @@ public final class SyntaxEditorViewController: UIViewController, UITextViewDeleg
     }
 
     private func startModelObservation() {
-        // ObservationsCompat automatically retains observation handles for the owner (`model`).
-        _ = model.observe(\.text, options: [.removeDuplicates]) { [weak self] text in
+        observationHandles.removeAll()
+
+        model.observe(\.text, options: [.removeDuplicates]) { [weak self] text in
             guard let self else { return }
             self.applyObservedText(text)
         }
+        .store(in: &observationHandles)
 
-        _ = model.observe([\.language, \.isEditable, \.lineWrappingEnabled]) { [weak self] in
+        model.observe([\.language, \.isEditable, \.lineWrappingEnabled]) { [weak self] in
             guard let self else { return }
             self.applyObservedEditorState(
                 language: self.model.language,
@@ -236,6 +240,7 @@ public final class SyntaxEditorViewController: UIViewController, UITextViewDeleg
                 lineWrappingEnabled: self.model.lineWrappingEnabled
             )
         }
+        .store(in: &observationHandles)
     }
 
     private func applyObservedText(_ text: String, forceTextUpdate: Bool = false) {
