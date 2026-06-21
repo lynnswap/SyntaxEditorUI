@@ -4,15 +4,6 @@ import SyntaxEditorCore
 import SyntaxEditorUICommon
 
 extension SyntaxEditorTextInputView {
-    override func performTextFinderAction(_ sender: Any?) {
-        guard usesFindBar else { return }
-        configureTextFinder()
-        let action = (sender as? NSMenuItem)
-            .flatMap { NSTextFinder.Action(rawValue: $0.tag) }
-            ?? .showFindInterface
-        textFinder.performAction(action)
-    }
-
     func configureTextFinder() {
         if !usesFindBar {
             textFinder.cancelFindIndicator()

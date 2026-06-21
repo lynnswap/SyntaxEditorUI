@@ -91,10 +91,6 @@ extension SyntaxEditorTextInputView {
 
     func breakUndoCoalescing() {}
 
-    override func insertText(_ insertString: Any) {
-        insertText(insertString, replacementRange: NSRange(location: NSNotFound, length: 0))
-    }
-
     func insertText(_ string: Any, replacementRange: NSRange) {
         guard isEditable else { return }
         let replacement = (string as? NSAttributedString)?.string ?? "\(string)"
