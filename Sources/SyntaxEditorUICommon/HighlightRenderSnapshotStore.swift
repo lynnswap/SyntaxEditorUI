@@ -274,6 +274,7 @@ package struct HighlightVisibleRunResolver {
     private let pendingEditMap: PendingHighlightEditMap
     private let currentTextLength: Int
     private let currentSuppressionRanges: [NSRange]
+    private let checkpointDirtyRanges: [NSRange]
     private let currentColorRuns: [HighlightColorRun]
     private let currentFontRuns: [HighlightFontRun]
     private let currentMaterializedRanges: [NSRange]
@@ -283,6 +284,7 @@ package struct HighlightVisibleRunResolver {
         pendingEditMap: PendingHighlightEditMap,
         currentTextLength: Int,
         currentSuppressionRanges: [NSRange],
+        checkpointDirtyRanges: [NSRange],
         currentColorRuns: [HighlightColorRun],
         currentFontRuns: [HighlightFontRun],
         currentMaterializedRanges: [NSRange]
@@ -291,6 +293,7 @@ package struct HighlightVisibleRunResolver {
         self.pendingEditMap = pendingEditMap
         self.currentTextLength = max(0, currentTextLength)
         self.currentSuppressionRanges = currentSuppressionRanges
+        self.checkpointDirtyRanges = checkpointDirtyRanges
         self.currentColorRuns = currentColorRuns
         self.currentFontRuns = currentFontRuns
         self.currentMaterializedRanges = currentMaterializedRanges
@@ -411,7 +414,7 @@ package struct HighlightVisibleRunResolver {
         guard clamped.length > 0 else { return }
 
         let suppressedRanges = HighlightRunUtilities.normalizedRanges(
-            pendingEditMap.visibleDirtyRanges + currentSuppressionRanges + currentMaterializedRanges,
+            pendingEditMap.visibleDirtyRanges + checkpointDirtyRanges + currentSuppressionRanges + currentMaterializedRanges,
             textLength: currentTextLength
         )
         for visibleRange in HighlightRunUtilities.rangesBySubtracting(suppressedRanges, from: clamped) {
@@ -427,7 +430,7 @@ package struct HighlightVisibleRunResolver {
         guard clamped.length > 0 else { return }
 
         let suppressedRanges = HighlightRunUtilities.normalizedRanges(
-            pendingEditMap.visibleDirtyRanges + currentMaterializedRanges,
+            pendingEditMap.visibleDirtyRanges + checkpointDirtyRanges + currentMaterializedRanges,
             textLength: currentTextLength
         )
         for visibleRange in HighlightRunUtilities.rangesBySubtracting(suppressedRanges, from: clamped) {
@@ -503,6 +506,7 @@ package final class HighlightRenderSnapshotStore {
     private var pendingEditMap = PendingHighlightEditMap()
     private var currentTextLength = 0
     private var currentSuppressionRanges: [NSRange] = []
+    private var checkpointDirtyRanges: [NSRange] = []
     private var currentColorRuns: [HighlightColorRun] = []
     private var currentFontRuns: [HighlightFontRun] = []
     private var currentMaterializedRanges: [NSRange] = []
@@ -523,6 +527,10 @@ package final class HighlightRenderSnapshotStore {
         pendingEditMap.visibleDirtyRanges
     }
 
+    package var checkpointDirtyRangesForTesting: [NSRange] {
+        checkpointDirtyRanges
+    }
+
     package var pendingEditCountForTesting: Int {
         pendingEditMap.editCountForTesting
     }
@@ -539,6 +547,7 @@ package final class HighlightRenderSnapshotStore {
         HighlightRunUtilities.colorRunsAreNormalized(currentColorRuns, textLength: currentTextLength)
             && HighlightRunUtilities.fontRunsAreNormalized(currentFontRuns, textLength: currentTextLength)
             && HighlightRunUtilities.rangesAreNormalized(currentSuppressionRanges, textLength: currentTextLength)
+            && HighlightRunUtilities.rangesAreNormalized(checkpointDirtyRanges, textLength: currentTextLength)
             && HighlightRunUtilities.rangesAreNormalized(currentMaterializedRanges, textLength: currentTextLength)
     }
 
@@ -719,6 +728,7 @@ package final class HighlightRenderSnapshotStore {
         if !pendingEditMap.isEmpty, !clampedRefreshRange.coversFullText(length: nextTextLength) {
             HighlightRunUtilities.replaceColorRuns(&currentColorRuns, in: clampedRefreshRange, with: normalizedColorRuns)
             HighlightRunUtilities.replaceFontRuns(&currentFontRuns, in: clampedRefreshRange, with: normalizedFontRuns)
+            removeCheckpointDirtyRanges(in: clampedRefreshRange, textLength: nextTextLength)
             currentMaterializedRanges = HighlightRunUtilities.normalizedRanges(
                 currentMaterializedRanges + [clampedRefreshRange],
                 textLength: nextTextLength
@@ -745,6 +755,11 @@ package final class HighlightRenderSnapshotStore {
         currentTextLength = nextTextLength
         currentSuppressionRanges = normalizedSuppressionRanges
         pendingEditMap.clear()
+        if clampedRefreshRange.coversFullText(length: nextTextLength) {
+            checkpointDirtyRanges = []
+        } else {
+            removeCheckpointDirtyRanges(in: clampedRefreshRange, textLength: nextTextLength)
+        }
         currentColorRuns = []
         currentFontRuns = []
         currentMaterializedRanges = []
@@ -902,6 +917,7 @@ package final class HighlightRenderSnapshotStore {
             fontRuns: fontRuns,
             suppressionRanges: []
         )
+        checkpointDirtyRanges = unresolvedCheckpointDirtyRangesAfterCheckpoint(textLength: currentTextLength)
         pendingEditMap.clear()
         currentColorRuns = []
         currentFontRuns = []
@@ -917,7 +933,11 @@ package final class HighlightRenderSnapshotStore {
         for mutation: SyntaxEditorTextChange.Replacement,
         currentTextLength nextTextLength: Int
     ) {
-        guard !currentColorRuns.isEmpty || !currentFontRuns.isEmpty || !currentMaterializedRanges.isEmpty else { return }
+        guard !currentColorRuns.isEmpty
+                || !currentFontRuns.isEmpty
+                || !checkpointDirtyRanges.isEmpty
+                || !currentMaterializedRanges.isEmpty
+        else { return }
 
         // Same clamping as PendingHighlightEditMap.recordPendingEdit.
         let replacementLength = mutation.replacement.utf16.count
@@ -939,10 +959,49 @@ package final class HighlightRenderSnapshotStore {
             delta: delta
         )
         HighlightRunUtilities.spliceEditIntoRanges(
+            &checkpointDirtyRanges,
+            editStart: editStart,
+            editEnd: editEnd,
+            delta: delta
+        )
+        HighlightRunUtilities.spliceEditIntoRanges(
             &currentMaterializedRanges,
             editStart: editStart,
             editEnd: editEnd,
             delta: delta
+        )
+    }
+
+    private func unresolvedCheckpointDirtyRangesAfterCheckpoint(textLength: Int) -> [NSRange] {
+        let resolvedRanges = HighlightRunUtilities.normalizedRanges(
+            currentColorRuns.map(\.range) + currentFontRuns.map(\.range) + currentMaterializedRanges,
+            textLength: textLength
+        )
+        let unresolved = pendingEditMap.visibleDirtyRanges.flatMap { dirtyRange in
+            HighlightRunUtilities.rangesBySubtracting(resolvedRanges, from: dirtyRange)
+        }
+        return HighlightRunUtilities.normalizedRanges(
+            checkpointDirtyRanges + unresolved,
+            textLength: textLength
+        )
+    }
+
+    private func removeCheckpointDirtyRanges(in refreshedRange: NSRange, textLength: Int) {
+        let clampedRefreshRange = SyntaxEditorRangeUtilities.clampedRange(
+            refreshedRange,
+            utf16Length: textLength
+        )
+        guard clampedRefreshRange.length > 0,
+              !checkpointDirtyRanges.isEmpty
+        else {
+            return
+        }
+
+        checkpointDirtyRanges = HighlightRunUtilities.normalizedRanges(
+            checkpointDirtyRanges.flatMap {
+                HighlightRunUtilities.rangesBySubtracting([clampedRefreshRange], from: $0)
+            },
+            textLength: textLength
         )
     }
 
@@ -978,6 +1037,7 @@ package final class HighlightRenderSnapshotStore {
         currentTextLength = nextTextLength
         currentSuppressionRanges = []
         pendingEditMap.clear()
+        checkpointDirtyRanges = []
         currentColorRuns = []
         currentFontRuns = []
         currentMaterializedRanges = []
@@ -999,6 +1059,7 @@ package final class HighlightRenderSnapshotStore {
         currentTextLength = nextTextLength
         currentSuppressionRanges = []
         pendingEditMap.clear()
+        checkpointDirtyRanges = []
         currentColorRuns = []
         currentFontRuns = []
         currentMaterializedRanges = []
@@ -1011,6 +1072,7 @@ package final class HighlightRenderSnapshotStore {
             pendingEditMap: pendingEditMap,
             currentTextLength: currentTextLength,
             currentSuppressionRanges: currentSuppressionRanges,
+            checkpointDirtyRanges: checkpointDirtyRanges,
             currentColorRuns: currentColorRuns,
             currentFontRuns: currentFontRuns,
             currentMaterializedRanges: currentMaterializedRanges

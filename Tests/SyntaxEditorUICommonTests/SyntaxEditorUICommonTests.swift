@@ -712,11 +712,156 @@ struct SyntaxEditorUICommonTests {
 
         #expect(referenceEditCount > 3)
         #expect(checkpointing.pendingEditCountForTesting <= 3)
+        #expect(checkpointing.maintainsNormalizedRunInvariantForTesting)
         #expect(checkpointedRuns.count == referenceRuns.count)
         for (lhs, rhs) in zip(checkpointedRuns, referenceRuns) {
             #expect(lhs.range == rhs.range)
             #expect(lhs.color.isEqual(rhs.color))
         }
+    }
+
+    @Test("Pending highlight checkpoint carries unresolved dirty ranges until refreshed")
+    func pendingHighlightCheckpointCarriesUnresolvedDirtyRangesUntilRefreshed() {
+        HighlightRenderSnapshotStore.pendingEditCheckpointThresholdOverrideForTesting = 3
+        defer { HighlightRenderSnapshotStore.pendingEditCheckpointThresholdOverrideForTesting = nil }
+
+        let store = HighlightRenderSnapshotStore()
+        store.commitSnapshot(
+            runSet: HighlightRunSet(colorRuns: [], fontRuns: []),
+            range: NSRange(location: 0, length: 0),
+            revision: 1,
+            language: .swift,
+            textLength: 0,
+            baseForeground: baseForeground,
+            baseFont: nil
+        )
+
+        let paste = "let value = 1\n"
+        let pasteLength = paste.utf16.count
+        var textLength = 0
+        for _ in 0..<4 {
+            textLength += pasteLength
+            store.recordPendingEdit(
+                SyntaxEditorTextChange.Replacement(location: 0, length: 0, replacement: paste),
+                currentTextLength: textLength
+            )
+        }
+
+        #expect(!store.hasPendingEditsForTesting)
+        #expect(store.checkpointDirtyRangesForTesting == [
+            NSRange(location: 0, length: textLength),
+        ])
+        #expect(store.foregroundColor(at: 0) == nil)
+
+        textLength += pasteLength
+        store.recordPendingEdit(
+            SyntaxEditorTextChange.Replacement(location: 0, length: 0, replacement: paste),
+            currentTextLength: textLength
+        )
+
+        #expect(store.pendingDirtyRangesForTesting == [
+            NSRange(location: 0, length: pasteLength),
+        ])
+        #expect(store.checkpointDirtyRangesForTesting == [
+            NSRange(location: pasteLength, length: pasteLength * 4),
+        ])
+
+        store.commitSnapshot(
+            runSet: HighlightRunSet(
+                colorRuns: [HighlightColorRun(range: NSRange(location: 0, length: 3), color: redColor)],
+                fontRuns: []
+            ),
+            range: NSRange(location: 0, length: pasteLength),
+            revision: 2,
+            language: .swift,
+            textLength: textLength,
+            baseForeground: baseForeground,
+            baseFont: nil
+        )
+
+        #expect(store.foregroundColor(at: 0)?.isEqual(redColor) == true)
+        #expect(store.foregroundColor(at: pasteLength) == nil)
+        #expect(store.checkpointDirtyRangesForTesting == [
+            NSRange(location: pasteLength, length: pasteLength * 4),
+        ])
+
+        store.commitSnapshot(
+            runSet: HighlightRunSet(
+                colorRuns: [HighlightColorRun(range: NSRange(location: pasteLength, length: 3), color: blueColor)],
+                fontRuns: []
+            ),
+            range: NSRange(location: pasteLength, length: pasteLength),
+            revision: 2,
+            language: .swift,
+            textLength: textLength,
+            baseForeground: baseForeground,
+            baseFont: nil
+        )
+
+        #expect(store.foregroundColor(at: pasteLength)?.isEqual(blueColor) == true)
+        #expect(store.foregroundColor(at: pasteLength * 2) == nil)
+        #expect(store.checkpointDirtyRangesForTesting == [
+            NSRange(location: pasteLength * 2, length: pasteLength * 3),
+        ])
+        #expect(store.maintainsNormalizedRunInvariantForTesting)
+
+        store.commitSnapshot(
+            runSet: HighlightRunSet(
+                colorRuns: [HighlightColorRun(range: NSRange(location: 0, length: textLength), color: redColor)],
+                fontRuns: []
+            ),
+            range: NSRange(location: 0, length: textLength),
+            revision: 3,
+            language: .swift,
+            textLength: textLength,
+            baseForeground: baseForeground,
+            baseFont: nil
+        )
+
+        #expect(store.checkpointDirtyRangesForTesting.isEmpty)
+        #expect(store.foregroundColor(at: pasteLength * 2)?.isEqual(redColor) == true)
+    }
+
+    @Test("Pending highlight checkpoint preserves font-only optimistic overlays")
+    func pendingHighlightCheckpointPreservesFontOnlyOptimisticOverlays() {
+        #if canImport(UIKit)
+        let syntaxFont = UIFont.boldSystemFont(ofSize: 13)
+        #elseif canImport(AppKit)
+        let syntaxFont = NSFont.boldSystemFont(ofSize: 13)
+        #endif
+
+        HighlightRenderSnapshotStore.pendingEditCheckpointThresholdOverrideForTesting = 1
+        defer { HighlightRenderSnapshotStore.pendingEditCheckpointThresholdOverrideForTesting = nil }
+
+        let store = HighlightRenderSnapshotStore()
+        store.commitSnapshot(
+            runSet: HighlightRunSet(
+                colorRuns: [],
+                fontRuns: [HighlightFontRun(range: NSRange(location: 0, length: 6), font: syntaxFont)]
+            ),
+            range: NSRange(location: 0, length: 6),
+            revision: 1,
+            language: .swift,
+            textLength: 6,
+            baseForeground: baseForeground,
+            baseFont: nil
+        )
+
+        store.recordPendingEdit(
+            SyntaxEditorTextChange.Replacement(location: 2, length: 0, replacement: "x"),
+            currentTextLength: 7
+        )
+        store.recordPendingEdit(
+            SyntaxEditorTextChange.Replacement(location: 6, length: 0, replacement: "y"),
+            currentTextLength: 8
+        )
+
+        #expect(!store.hasPendingEditsForTesting)
+        #expect(store.checkpointDirtyRangesForTesting.isEmpty)
+        #expect(store.foregroundColor(at: 2) == nil)
+        #expect(store.font(at: 2)?.isEqual(syntaxFont) == true)
+        #expect(store.font(at: 6)?.isEqual(syntaxFont) == true)
+        #expect(store.maintainsNormalizedRunInvariantForTesting)
     }
 
     @Test("Highlight visible resolver suppresses marked text ranges")
@@ -796,6 +941,7 @@ struct SyntaxEditorUICommonTests {
 
         #expect(invalidatedDirtyRanges == [NSRange(location: 5, length: 2)])
         #expect(!store.hasPendingEditsForTesting)
+        #expect(store.checkpointDirtyRangesForTesting.isEmpty)
         #expect(store.foregroundColor(at: 5)?.isEqual(blueColor) == true)
     }
 
@@ -834,6 +980,7 @@ struct SyntaxEditorUICommonTests {
 
         #expect(partialInvalidatedRanges.isEmpty)
         #expect(store.hasPendingEditsForTesting)
+        #expect(store.checkpointDirtyRangesForTesting.isEmpty)
         let visibleRuns = store.colorRuns(in: NSRange(location: 0, length: 12))
         #expect(visibleRuns.map(\.range) == [
             NSRange(location: 0, length: 5),
