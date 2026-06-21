@@ -104,6 +104,97 @@ struct SyntaxEditorUICommonTests {
         #expect(index.firstTokenIndex(intersecting: NSRange(location: 81, length: 1)) == tokens.count)
     }
 
+    @Test("Highlight run assembler clips tokens, removes nil styles, and coalesces")
+    func highlightRunAssemblerClipsRemovesNilStylesAndCoalesces() {
+        let tokens = [
+            SyntaxEditorHighlighting.Token(
+                range: NSRange(location: 0, length: 10),
+                rawCaptureName: "editor.syntax.swift.comment"
+            ),
+            SyntaxEditorHighlighting.Token(
+                range: NSRange(location: 3, length: 2),
+                rawCaptureName: "editor.syntax.swift.keyword"
+            ),
+            SyntaxEditorHighlighting.Token(
+                range: NSRange(location: 5, length: 1),
+                rawCaptureName: "editor.syntax.swift.plain"
+            ),
+            SyntaxEditorHighlighting.Token(
+                range: NSRange(location: 8, length: 5),
+                rawCaptureName: "editor.syntax.swift.comment"
+            ),
+        ]
+
+        let runs = HighlightRunAssembler.assembleRuns(
+            for: tokens,
+            targetRange: NSRange(location: 1, length: 8),
+            textLength: 10
+        ) { token -> TestHighlightStyle? in
+            switch token.rawCaptureName {
+            case "editor.syntax.swift.comment":
+                return .red
+            case "editor.syntax.swift.keyword":
+                return .blue
+            default:
+                return nil
+            }
+        } stylesCanCoalesce: { lhs, rhs in
+            lhs == rhs
+        }
+
+        #expect(runs.map(\.range) == [
+            NSRange(location: 1, length: 2),
+            NSRange(location: 3, length: 2),
+            NSRange(location: 6, length: 3),
+        ])
+        #expect(runs.map(\.style) == [.red, .blue, .red])
+    }
+
+    @Test("Highlight run assembler coalesces color and font runs independently")
+    func highlightRunAssemblerCoalescesColorAndFontRunsIndependently() {
+        #if canImport(UIKit)
+        let regularFont = UIFont.systemFont(ofSize: 13)
+        let boldFont = UIFont.boldSystemFont(ofSize: 13)
+        #elseif canImport(AppKit)
+        let regularFont = NSFont.systemFont(ofSize: 13)
+        let boldFont = NSFont.boldSystemFont(ofSize: 13)
+        #endif
+        let tokens = [
+            SyntaxEditorHighlighting.Token(
+                range: NSRange(location: 0, length: 2),
+                rawCaptureName: "editor.syntax.swift.comment"
+            ),
+            SyntaxEditorHighlighting.Token(
+                range: NSRange(location: 2, length: 2),
+                rawCaptureName: "editor.syntax.swift.keyword"
+            ),
+        ]
+
+        let runSet = HighlightRunAssembler.assembleRunSet(
+            for: tokens,
+            targetRange: NSRange(location: 0, length: 4),
+            textLength: 4
+        ) { token in
+            switch token.rawCaptureName {
+            case "editor.syntax.swift.comment":
+                return HighlightRunStyle(foregroundColor: redColor, font: regularFont)
+            case "editor.syntax.swift.keyword":
+                return HighlightRunStyle(foregroundColor: redColor, font: boldFont)
+            default:
+                return nil
+            }
+        }
+
+        #expect(runSet.colorRuns.map(\.range) == [NSRange(location: 0, length: 4)])
+        #expect(runSet.colorRuns.first?.color.isEqual(redColor) == true)
+        #expect(runSet.fontRuns.map(\.range) == [
+            NSRange(location: 0, length: 2),
+            NSRange(location: 2, length: 2),
+        ])
+        #expect(runSet.fontRuns.first?.font.isEqual(regularFont) == true)
+        #expect(runSet.fontRuns.last?.font.isEqual(boldFont) == true)
+    }
+
     @Test("Document line metrics centralizes resize estimates without rebuilds")
     func documentLineMetricsCachesResizeEstimates() {
         let metrics = DocumentLineMetrics(
@@ -968,4 +1059,9 @@ private var blueColor: SyntaxEditorTheme.Color {
 #elseif canImport(AppKit)
     .blue
 #endif
+}
+
+private enum TestHighlightStyle: Equatable {
+    case red
+    case blue
 }

@@ -70,10 +70,9 @@ private struct SyntaxHighlightStyle {
     let font: NSFont
 }
 
-private struct SyntaxHighlightResolvedRun {
+private struct SyntaxHighlightResolvedStyle {
     let key: SyntaxHighlightAttributeKey
-    var range: NSRange
-    let style: SyntaxHighlightStyle
+    let attributes: SyntaxHighlightStyle
 }
 
 private struct HighlightPhaseRecord: Equatable {
@@ -2295,7 +2294,7 @@ public final class SyntaxEditorView: NSScrollView {
 
         for run in resolvedRuns {
             if var last = colorRuns.last,
-               last.color.isEqual(run.style.foregroundColor),
+               last.color.isEqual(run.style.attributes.foregroundColor),
                last.range.upperBound >= run.range.location,
                run.range.upperBound >= last.range.location {
                 let lowerBound = min(last.range.location, run.range.location)
@@ -2303,9 +2302,9 @@ public final class SyntaxEditorView: NSScrollView {
                 last.range = NSRange(location: lowerBound, length: upperBound - lowerBound)
                 colorRuns[colorRuns.count - 1] = last
             } else {
-                colorRuns.append(HighlightColorRun(range: run.range, color: run.style.foregroundColor))
+                colorRuns.append(HighlightColorRun(range: run.range, color: run.style.attributes.foregroundColor))
             }
-            let font = run.style.font
+            let font = run.style.attributes.font
             guard baseFont.map({ !font.isEqual($0) }) ?? true
             else {
                 continue
@@ -2321,152 +2320,19 @@ public final class SyntaxEditorView: NSScrollView {
         targetRange: NSRange,
         textLength: Int,
         resolver: inout SyntaxHighlightAttributeResolver
-    ) -> [SyntaxHighlightResolvedRun] {
-        var runs: [SyntaxHighlightResolvedRun] = []
-        runs.reserveCapacity(min(tokens.count, 1024))
-
-        let tokenRangeIndex = HighlightTokenRangeIndex(tokens: tokens)
-        let tokenStartIndex = tokenRangeIndex.firstTokenIndex(intersecting: targetRange)
-        for token in tokens[tokenStartIndex...] {
-            guard token.range.location < targetRange.upperBound else { break }
-            let clamped = SyntaxEditorRangeUtilities.clampedRange(token.range, utf16Length: textLength)
-            let intersection = SyntaxEditorRangeUtilities.intersection(of: clamped, and: targetRange)
-            guard intersection.length > 0 else {
-                continue
-            }
+    ) -> [HighlightAssembledRun<SyntaxHighlightResolvedStyle>] {
+        HighlightRunAssembler.assembleRuns(
+            for: tokens,
+            targetRange: targetRange,
+            textLength: textLength
+        ) { token in
             guard let resolved = resolver.style(for: token.syntaxID, language: token.language) else {
-                subtractSyntaxHighlightRange(intersection, from: &runs)
-                continue
+                return nil
             }
-
-            subtractSyntaxHighlightRange(intersection, from: &runs)
-            insertSyntaxHighlightResolvedRun(
-                SyntaxHighlightResolvedRun(
-                    key: resolved.key,
-                    range: intersection,
-                    style: resolved.style
-                ),
-                into: &runs
-            )
+            return SyntaxHighlightResolvedStyle(key: resolved.key, attributes: resolved.style)
+        } stylesCanCoalesce: { lhs, rhs in
+            lhs.key == rhs.key
         }
-
-        return runs
-    }
-
-    private func insertSyntaxHighlightResolvedRun(
-        _ run: SyntaxHighlightResolvedRun,
-        into runs: inout [SyntaxHighlightResolvedRun]
-    ) {
-        let insertionIndex = firstResolvedRunIndex(startingAtOrAfter: run.range.location, in: runs)
-        runs.insert(run, at: insertionIndex)
-        coalesceResolvedRuns(around: insertionIndex, in: &runs)
-    }
-
-    private func coalesceResolvedRuns(
-        around insertionIndex: Int,
-        in runs: inout [SyntaxHighlightResolvedRun]
-    ) {
-        var index = insertionIndex
-        if index > 0, resolvedRunsCanCoalesce(runs[index - 1], runs[index]) {
-            let mergedRange = unionRange(runs[index - 1].range, runs[index].range)
-            runs[index - 1].range = mergedRange
-            runs.remove(at: index)
-            index -= 1
-        }
-        if index + 1 < runs.count, resolvedRunsCanCoalesce(runs[index], runs[index + 1]) {
-            let mergedRange = unionRange(runs[index].range, runs[index + 1].range)
-            runs[index].range = mergedRange
-            runs.remove(at: index + 1)
-        }
-    }
-
-    private func resolvedRunsCanCoalesce(
-        _ lhs: SyntaxHighlightResolvedRun,
-        _ rhs: SyntaxHighlightResolvedRun
-    ) -> Bool {
-        lhs.key == rhs.key
-            && lhs.range.upperBound >= rhs.range.location
-            && rhs.range.upperBound >= lhs.range.location
-    }
-
-    private func unionRange(_ lhs: NSRange, _ rhs: NSRange) -> NSRange {
-        let lowerBound = min(lhs.location, rhs.location)
-        let upperBound = max(lhs.upperBound, rhs.upperBound)
-        return NSRange(location: lowerBound, length: upperBound - lowerBound)
-    }
-
-    private func subtractSyntaxHighlightRange(
-        _ range: NSRange,
-        from runs: inout [SyntaxHighlightResolvedRun]
-    ) {
-        var index = firstResolvedRunIndex(intersecting: range, in: runs)
-        while index < runs.count {
-            let run = runs[index]
-            guard run.range.location < range.upperBound else { break }
-            let intersection = SyntaxEditorRangeUtilities.intersection(of: run.range, and: range)
-            guard intersection.length > 0 else {
-                index += 1
-                continue
-            }
-
-            let runStart = run.range.location
-            let runEnd = run.range.upperBound
-            let resetStart = intersection.location
-            let resetEnd = intersection.upperBound
-
-            if resetStart <= runStart, resetEnd >= runEnd {
-                runs.remove(at: index)
-            } else if resetStart <= runStart {
-                runs[index].range = NSRange(location: resetEnd, length: runEnd - resetEnd)
-                break
-            } else if resetEnd >= runEnd {
-                runs[index].range = NSRange(location: runStart, length: resetStart - runStart)
-                index += 1
-            } else {
-                let trailingRun = SyntaxHighlightResolvedRun(
-                    key: run.key,
-                    range: NSRange(location: resetEnd, length: runEnd - resetEnd),
-                    style: run.style
-                )
-                runs[index].range = NSRange(location: runStart, length: resetStart - runStart)
-                runs.insert(trailingRun, at: index + 1)
-                break
-            }
-        }
-    }
-
-    private func firstResolvedRunIndex(
-        intersecting range: NSRange,
-        in runs: [SyntaxHighlightResolvedRun]
-    ) -> Int {
-        var lowerBound = 0
-        var upperBound = runs.count
-        while lowerBound < upperBound {
-            let middle = lowerBound + (upperBound - lowerBound) / 2
-            if runs[middle].range.upperBound <= range.location {
-                lowerBound = middle + 1
-            } else {
-                upperBound = middle
-            }
-        }
-        return lowerBound
-    }
-
-    private func firstResolvedRunIndex(
-        startingAtOrAfter location: Int,
-        in runs: [SyntaxHighlightResolvedRun]
-    ) -> Int {
-        var lowerBound = 0
-        var upperBound = runs.count
-        while lowerBound < upperBound {
-            let middle = lowerBound + (upperBound - lowerBound) / 2
-            if runs[middle].range.location < location {
-                lowerBound = middle + 1
-            } else {
-                upperBound = middle
-            }
-        }
-        return lowerBound
     }
 
     private func recordAppliedHighlight(
