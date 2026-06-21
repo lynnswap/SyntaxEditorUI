@@ -31,6 +31,7 @@
     }
   }
 
+  @MainActor
   public final class SyntaxEditorView: NSScrollView {
     public private(set) var model: SyntaxEditorModel
     public var isFindInteractionEnabled = true {
@@ -88,6 +89,26 @@
     var nextHighlightPhaseWaiterID = 0
 
     var scrollView: NSScrollView { self }
+
+    public override var contentInsets: NSEdgeInsets {
+      didSet {
+        guard contentInsetsDidChange(from: oldValue, to: contentInsets),
+          isScrollViewConfigured,
+          !isApplyingLineWrappingConfiguration,
+          !isRetilingForContentInsetsChange
+        else {
+          return
+        }
+
+        isRetilingForContentInsetsChange = true
+        defer { isRetilingForContentInsetsChange = false }
+        tile()
+      }
+    }
+
+    public override var acceptsFirstResponder: Bool {
+      true
+    }
 
     public convenience init(
       model: SyntaxEditorModel
@@ -159,6 +180,74 @@
       model = nextModel
       synchronizeReboundModel()
       startModelObservation(schedulesInitialHighlight: false, skipsInitialModelDelivery: true)
+    }
+
+    public override func layout() {
+      super.layout()
+      applyLineWrappingConfiguration(lineWrappingEnabled: model.lineWrappingEnabled)
+    }
+
+    public override func viewDidChangeEffectiveAppearance() {
+      super.viewDidChangeEffectiveAppearance()
+      let previousAppearance = lastAppliedThemeAppearance ?? currentThemeAppearance
+      let nextAppearance = currentThemeAppearance
+      let theme = lastAppliedTheme ?? model.theme
+      let baseFontChanged = !resolvedBaseFont(
+        for: theme.resolved(for: model.language, appearance: previousAppearance),
+        fontSizeDelta: lastAppliedFontSizeDelta
+      ).isEqual(
+        resolvedBaseFont(
+          for: theme.resolved(for: model.language, appearance: nextAppearance),
+          fontSizeDelta: lastAppliedFontSizeDelta
+        ))
+      let hasCachedSyntaxFontRunChanges: Bool
+      if previousAppearance != nextAppearance {
+        hasCachedSyntaxFontRunChanges = cachedSyntaxFontRunsChanged(
+          from: theme,
+          previousAppearance: previousAppearance,
+          previousFontSizeDelta: lastAppliedFontSizeDelta,
+          to: theme,
+          nextAppearance: nextAppearance,
+          nextFontSizeDelta: lastAppliedFontSizeDelta,
+          language: model.language
+        )
+      } else {
+        hasCachedSyntaxFontRunChanges = false
+      }
+      lastAppliedThemeAppearance = nextAppearance
+
+      updateEditorBackgroundColor()
+      applyBaseForegroundColorChange(from: lastAppliedTheme, to: theme)
+      updateTextViewFontAndTypingAttributes()
+      if baseFontChanged || hasCachedSyntaxFontRunChanges {
+        applyResolvedFontsToExistingText()
+      }
+      reapplyCachedHighlight()
+      applyMatchingBracketHighlight(force: true)
+    }
+
+    public override func tile() {
+      super.tile()
+      guard isScrollViewConfigured, !isApplyingLineWrappingConfiguration else { return }
+
+      applyLineWrappingConfiguration(lineWrappingEnabled: model.lineWrappingEnabled)
+    }
+
+    public override func reflectScrolledClipView(_ clipView: NSClipView) {
+      super.reflectScrolledClipView(clipView)
+      guard isScrollViewConfigured, !isApplyingLineWrappingConfiguration else { return }
+
+      textView.layoutVisibleViewportIfNeeded()
+    }
+
+    public override func becomeFirstResponder() -> Bool {
+      guard let window = unsafe self.window else {
+        return textView.becomeFirstResponder()
+      }
+      if window.firstResponder === textView {
+        return true
+      }
+      return window.makeFirstResponder(textView)
     }
 
     @available(*, unavailable)
