@@ -160,6 +160,11 @@
       guard !hasAppliedHighlightPhaseForTesting(phase, revision: expectedRevision) else {
         return true
       }
+      guard !hasSkippedHighlightPhaseForTesting(phase, revision: expectedRevision),
+        hasPendingHighlightForTesting(revision: expectedRevision)
+      else {
+        return false
+      }
 
       let waiterID = nextHighlightPhaseWaiterID
       nextHighlightPhaseWaiterID += 1
@@ -181,6 +186,13 @@
       let expectedRevision = model.textRevision
       guard !hasSkippedHighlightPhaseForTesting(phase, revision: expectedRevision) else {
         return true
+      }
+      guard !hasAppliedHighlightPhaseForTesting(phase, revision: expectedRevision),
+        !(phase != .complete
+          && hasAppliedHighlightPhaseForTesting(.complete, revision: expectedRevision)),
+        hasPendingHighlightForTesting(revision: expectedRevision)
+      else {
+        return false
       }
 
       let waiterID = nextHighlightPhaseWaiterID
@@ -266,6 +278,16 @@
       resumeSkippedHighlightPhaseWaitersForTesting(result: false)
     }
 
+    private func hasPendingHighlightForTesting(revision: Int) -> Bool {
+      guard let scheduledHighlightRequest,
+        scheduledHighlightRequest.model === model,
+        scheduledHighlightRequest.revision == revision
+      else {
+        return false
+      }
+      return true
+    }
+
     private func hasAppliedHighlightPhaseForTesting(
       _ phase: SyntaxEditorHighlighting.Result.Phase,
       revision: Int
@@ -293,6 +315,17 @@
         phase: phase,
         result: true
       )
+      resumeSkippedHighlightPhaseWaitersForTesting(
+        revision: revision,
+        phase: phase,
+        result: false
+      )
+      if phase == .complete {
+        resumeSkippedHighlightPhaseWaitersForTesting(
+          revision: revision,
+          result: false
+        )
+      }
     }
 
     private func hasSkippedHighlightPhaseForTesting(
@@ -322,6 +355,16 @@
         phase: phase,
         result: true
       )
+      resumeAppliedHighlightPhaseWaitersForTesting(
+        revision: revision,
+        phase: phase,
+        result: false
+      )
+    }
+
+    private func finishUnresolvedHighlightPhaseWaitersForTesting(revision: Int) {
+      resumeAppliedHighlightPhaseWaitersForTesting(revision: revision, result: false)
+      resumeSkippedHighlightPhaseWaitersForTesting(revision: revision, result: false)
     }
 
     private func resumeAppliedHighlightPhaseWaitersForTesting(
@@ -444,7 +487,10 @@
     }
 
     private func clearScheduledHighlightRequestIfCurrent(id: Int) {
-      guard scheduledHighlightRequest?.id == id else { return }
+      guard let request = scheduledHighlightRequest,
+        request.id == id
+      else { return }
+      finishUnresolvedHighlightPhaseWaitersForTesting(revision: request.revision)
       scheduledHighlightRequest = nil
     }
 
