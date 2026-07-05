@@ -337,6 +337,30 @@ struct SyntaxHighlighterEngineTests {
         #expect(results.count > 2)
     }
 
+    @Test("SyntaxHighlighterEngine progressive reset emits the first JavaScript chunk")
+    func highlighterProgressiveResetEmitsFirstChunkForJavaScript() async throws {
+        let unit = try referenceSampleText(named: "Reference.js")
+        let copies = max(1, 60_000 / max(1, unit.utf16.count) + 1)
+        let source = String(repeating: unit, count: copies)
+
+        HighlightSession.progressiveResetThresholdOverrideForTesting = 1024
+        defer { HighlightSession.progressiveResetThresholdOverrideForTesting = nil }
+
+        let engine = SyntaxHighlighterEngine()
+        let phases = await collectHighlightPhases(
+            await engine.resetPhases(source: source, language: .javascript, revision: 0)
+        )
+        let first = try #require(phases.first)
+        let final = try #require(phases.last)
+
+        #expect(phases.count > 2)
+        #expect(first.phase == .complete)
+        #expect(first.tokenPayload == .replacement)
+        #expect(first.refreshRanges.first?.location == 0)
+        #expect((first.refreshRanges.first?.length ?? source.utf16.count) < source.utf16.count)
+        #expect(final.tokenPayload == .fullSnapshot)
+    }
+
     @Test(
         "SyntaxHighlighterEngine progressive reset matches the monolithic reset",
         arguments: [

@@ -476,7 +476,7 @@ package final class HighlightSession {
                 )
                 planes.reset(tokens: tokens, lineTable: lineTable)
 
-                emitFastPassIfNeeded(
+                emitDeferredSemanticFastPassIfNeeded(
                     tokens: tokens,
                     source: source,
                     revision: revision,
@@ -577,27 +577,23 @@ package final class HighlightSession {
                 // viewport chunk is a partial paint; reset-origin streams may
                 // apply replacements onto the fresh baseline (the view gates on
                 // the request's origin).
-                emitFastPassIfNeeded(
+                emitProgressiveResetChunk(
                     tokens: planes.tokens(in: target, lineTable: lineTable),
                     source: source,
                     revision: revision,
                     refreshRange: target,
-                    tokenPayload: .replacement,
+                    phase: usesDeferredSemanticHighlighting ? .syntacticFastPass : .complete,
                     emitFastPass: emitFastPass
                 )
             } else if let emitFastPass, !syntacticDebt.isEmpty {
-                emitFastPass(SyntaxEditorHighlighting.Result(
-                    tokens: resultTokens(
-                        from: planes.tokens(in: target, lineTable: lineTable),
-                        refreshRange: target,
-                        tokenPayload: .replacement
-                    ),
+                emitProgressiveResetChunk(
+                    tokens: planes.tokens(in: target, lineTable: lineTable),
                     source: source,
-                    language: language,
                     revision: revision,
-                    refreshRanges: [target],
-                    tokenPayload: .replacement
-                ))
+                    refreshRange: target,
+                    phase: .complete,
+                    emitFastPass: emitFastPass
+                )
             }
             await Task.yield()
         }
@@ -761,7 +757,7 @@ package final class HighlightSession {
         }
         syntacticRefresh = SyntaxEditorRangeUtilities.clampedRange(syntacticRefresh, utf16Length: nextLength)
 
-        emitFastPassIfNeeded(
+        emitDeferredSemanticFastPassIfNeeded(
             tokens: planes.tokens(in: syntacticRefresh, lineTable: lineTable),
             source: nextSource,
             revision: revision,
@@ -1097,7 +1093,7 @@ package final class HighlightSession {
         language == .swift || language == .objectiveC
     }
 
-    private func emitFastPassIfNeeded(
+    private func emitDeferredSemanticFastPassIfNeeded(
         tokens: [SyntaxEditorHighlighting.Token],
         source: String,
         revision: Int,
@@ -1115,6 +1111,28 @@ package final class HighlightSession {
                 refreshRanges: [refreshRange],
                 phase: .syntacticFastPass,
                 tokenPayload: tokenPayload
+            )
+        )
+    }
+
+    private func emitProgressiveResetChunk(
+        tokens: [SyntaxEditorHighlighting.Token],
+        source: String,
+        revision: Int,
+        refreshRange: NSRange,
+        phase: SyntaxEditorHighlighting.Result.Phase,
+        emitFastPass: ((SyntaxEditorHighlighting.Result) -> Void)?
+    ) {
+        guard let emitFastPass else { return }
+        emitFastPass(
+            SyntaxEditorHighlighting.Result(
+                tokens: resultTokens(from: tokens, refreshRange: refreshRange, tokenPayload: .replacement),
+                source: source,
+                language: language,
+                revision: revision,
+                refreshRanges: [refreshRange],
+                phase: phase,
+                tokenPayload: .replacement
             )
         )
     }
