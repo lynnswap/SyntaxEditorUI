@@ -450,7 +450,7 @@ package final class HighlightSession {
             layer = nextLayer
 
             let fullRange = NSRange(location: 0, length: layeredSource.utf16.count)
-            if usesDeferredSemanticHighlighting, fullRange.length > Self.progressiveResetThreshold {
+            if fullRange.length > Self.progressiveResetThreshold {
                 // Progressive open for large documents: the viewport chunk paints
                 // first (parse + one bounded query instead of the whole-document
                 // query), then the remaining base chunks land with yields between
@@ -476,7 +476,7 @@ package final class HighlightSession {
                 )
                 planes.reset(tokens: tokens, lineTable: lineTable)
 
-                emitFastPassIfNeeded(
+                emitDeferredSemanticFastPassIfNeeded(
                     tokens: tokens,
                     source: source,
                     revision: revision,
@@ -531,8 +531,10 @@ package final class HighlightSession {
     /// nearest the viewport runs first and emits the first paint (a
     /// `.fullSnapshot` fast pass — on a fresh document the not-yet-tokenized
     /// remainder is legitimately uncolored); later chunks emit progressive
-    /// `.complete` replacements with a yield between them. Returns false on
-    /// cancellation — the caller never installs a half-built session.
+    /// replacements with a yield between them. Chunks stay in
+    /// `.syntacticFastPass` when a semantic pass still has to merge overlays.
+    /// Returns false on cancellation — the caller never installs a half-built
+    /// session.
     private func progressiveSyntacticReset(
         layer: LanguageLayer,
         fullRange: NSRange,
@@ -544,6 +546,8 @@ package final class HighlightSession {
         var syntacticDebt = EditedRangeSet()
         syntacticDebt.insert(fullRange)
         var emittedFirstPaint = false
+        let syntacticChunkPhase: SyntaxEditorHighlighting.Result.Phase =
+            semanticPass == nil ? .complete : .syntacticFastPass
 
         while !syntacticDebt.isEmpty {
             if Task.isCancelled {
@@ -577,27 +581,23 @@ package final class HighlightSession {
                 // viewport chunk is a partial paint; reset-origin streams may
                 // apply replacements onto the fresh baseline (the view gates on
                 // the request's origin).
-                emitFastPassIfNeeded(
+                emitProgressiveResetChunk(
                     tokens: planes.tokens(in: target, lineTable: lineTable),
                     source: source,
                     revision: revision,
                     refreshRange: target,
-                    tokenPayload: .replacement,
+                    phase: syntacticChunkPhase,
                     emitFastPass: emitFastPass
                 )
             } else if let emitFastPass, !syntacticDebt.isEmpty {
-                emitFastPass(SyntaxEditorHighlighting.Result(
-                    tokens: resultTokens(
-                        from: planes.tokens(in: target, lineTable: lineTable),
-                        refreshRange: target,
-                        tokenPayload: .replacement
-                    ),
+                emitProgressiveResetChunk(
+                    tokens: planes.tokens(in: target, lineTable: lineTable),
                     source: source,
-                    language: language,
                     revision: revision,
-                    refreshRanges: [target],
-                    tokenPayload: .replacement
-                ))
+                    refreshRange: target,
+                    phase: syntacticChunkPhase,
+                    emitFastPass: emitFastPass
+                )
             }
             await Task.yield()
         }
@@ -761,7 +761,7 @@ package final class HighlightSession {
         }
         syntacticRefresh = SyntaxEditorRangeUtilities.clampedRange(syntacticRefresh, utf16Length: nextLength)
 
-        emitFastPassIfNeeded(
+        emitDeferredSemanticFastPassIfNeeded(
             tokens: planes.tokens(in: syntacticRefresh, lineTable: lineTable),
             source: nextSource,
             revision: revision,
@@ -1097,7 +1097,7 @@ package final class HighlightSession {
         language == .swift || language == .objectiveC
     }
 
-    private func emitFastPassIfNeeded(
+    private func emitDeferredSemanticFastPassIfNeeded(
         tokens: [SyntaxEditorHighlighting.Token],
         source: String,
         revision: Int,
@@ -1115,6 +1115,28 @@ package final class HighlightSession {
                 refreshRanges: [refreshRange],
                 phase: .syntacticFastPass,
                 tokenPayload: tokenPayload
+            )
+        )
+    }
+
+    private func emitProgressiveResetChunk(
+        tokens: [SyntaxEditorHighlighting.Token],
+        source: String,
+        revision: Int,
+        refreshRange: NSRange,
+        phase: SyntaxEditorHighlighting.Result.Phase,
+        emitFastPass: ((SyntaxEditorHighlighting.Result) -> Void)?
+    ) {
+        guard let emitFastPass else { return }
+        emitFastPass(
+            SyntaxEditorHighlighting.Result(
+                tokens: resultTokens(from: tokens, refreshRange: refreshRange, tokenPayload: .replacement),
+                source: source,
+                language: language,
+                revision: revision,
+                refreshRanges: [refreshRange],
+                phase: phase,
+                tokenPayload: .replacement
             )
         )
     }
