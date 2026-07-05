@@ -450,7 +450,7 @@ package final class HighlightSession {
             layer = nextLayer
 
             let fullRange = NSRange(location: 0, length: layeredSource.utf16.count)
-            if usesDeferredSemanticHighlighting, fullRange.length > Self.progressiveResetThreshold {
+            if fullRange.length > Self.progressiveResetThreshold {
                 // Progressive open for large documents: the viewport chunk paints
                 // first (parse + one bounded query instead of the whole-document
                 // query), then the remaining base chunks land with yields between

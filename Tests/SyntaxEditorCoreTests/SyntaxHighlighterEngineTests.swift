@@ -339,10 +339,17 @@ struct SyntaxHighlighterEngineTests {
 
     @Test(
         "SyntaxHighlighterEngine progressive reset matches the monolithic reset",
-        arguments: [SyntaxLanguage.swift, .objectiveC]
+        arguments: [
+            (SyntaxLanguage.swift, "Reference.swift"),
+            (.objectiveC, "Reference.m"),
+            (.javascript, "Reference.js"),
+            (.json, "Reference.json"),
+        ]
     )
-    func highlighterProgressiveResetMatchesMonolithicReset(language: SyntaxLanguage) async throws {
-        let filename = language == .swift ? "Reference.swift" : "Reference.m"
+    func highlighterProgressiveResetMatchesMonolithicReset(
+        language: SyntaxLanguage,
+        filename: String
+    ) async throws {
         let unit = try referenceSampleText(named: filename)
         // Repeat the fixture so the progressive path runs multiple chunks
         // (chunk budget is 16k UTF-16 units).
