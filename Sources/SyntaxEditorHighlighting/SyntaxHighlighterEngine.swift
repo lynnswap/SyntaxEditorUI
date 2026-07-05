@@ -531,8 +531,10 @@ package final class HighlightSession {
     /// nearest the viewport runs first and emits the first paint (a
     /// `.fullSnapshot` fast pass — on a fresh document the not-yet-tokenized
     /// remainder is legitimately uncolored); later chunks emit progressive
-    /// `.complete` replacements with a yield between them. Returns false on
-    /// cancellation — the caller never installs a half-built session.
+    /// replacements with a yield between them. Chunks stay in
+    /// `.syntacticFastPass` when a semantic pass still has to merge overlays.
+    /// Returns false on cancellation — the caller never installs a half-built
+    /// session.
     private func progressiveSyntacticReset(
         layer: LanguageLayer,
         fullRange: NSRange,
@@ -544,6 +546,8 @@ package final class HighlightSession {
         var syntacticDebt = EditedRangeSet()
         syntacticDebt.insert(fullRange)
         var emittedFirstPaint = false
+        let syntacticChunkPhase: SyntaxEditorHighlighting.Result.Phase =
+            semanticPass == nil ? .complete : .syntacticFastPass
 
         while !syntacticDebt.isEmpty {
             if Task.isCancelled {
@@ -582,7 +586,7 @@ package final class HighlightSession {
                     source: source,
                     revision: revision,
                     refreshRange: target,
-                    phase: usesDeferredSemanticHighlighting ? .syntacticFastPass : .complete,
+                    phase: syntacticChunkPhase,
                     emitFastPass: emitFastPass
                 )
             } else if let emitFastPass, !syntacticDebt.isEmpty {
@@ -591,7 +595,7 @@ package final class HighlightSession {
                     source: source,
                     revision: revision,
                     refreshRange: target,
-                    phase: .complete,
+                    phase: syntacticChunkPhase,
                     emitFastPass: emitFastPass
                 )
             }

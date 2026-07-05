@@ -362,6 +362,38 @@ struct SyntaxHighlighterEngineTests {
     }
 
     @Test(
+        "SyntaxHighlighterEngine keeps semantic progressive reset chunks in fast-pass phase",
+        arguments: [
+            (SyntaxLanguage.css, "Reference.css"),
+            (.html, "Reference.html"),
+        ]
+    )
+    func highlighterKeepsSemanticProgressiveResetChunksInFastPassPhase(
+        language: SyntaxLanguage,
+        filename: String
+    ) async throws {
+        let unit = try referenceSampleText(named: filename)
+        let copies = max(1, 60_000 / max(1, unit.utf16.count) + 1)
+        let source = String(repeating: unit, count: copies)
+
+        HighlightSession.progressiveResetThresholdOverrideForTesting = 1024
+        defer { HighlightSession.progressiveResetThresholdOverrideForTesting = nil }
+
+        let engine = SyntaxHighlighterEngine()
+        let phases = await collectHighlightPhases(
+            await engine.resetPhases(source: source, language: language, revision: 0)
+        )
+        let final = try #require(phases.last)
+        let partials = phases.dropLast()
+
+        #expect(partials.isEmpty == false)
+        #expect(partials.allSatisfy { $0.phase == .syntacticFastPass })
+        #expect(partials.allSatisfy { $0.tokenPayload == .replacement })
+        #expect(final.phase == .complete)
+        #expect(final.tokenPayload == .fullSnapshot)
+    }
+
+    @Test(
         "SyntaxHighlighterEngine progressive reset matches the monolithic reset",
         arguments: [
             (SyntaxLanguage.swift, "Reference.swift"),
