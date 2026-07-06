@@ -1591,6 +1591,40 @@ extension SyntaxEditorUITests {
         #expect(abs(editorView.contentOffset.x - stableOffsetX) <= 1)
     }
 
+    @Test("SyntaxEditorView keeps explicit iOS scrolls over query-armed offset preservation")
+    @MainActor
+    func syntaxEditorViewIOSKeepsExplicitScrollOverQueryArmedPreservation() {
+        let model = SyntaxEditorTestContext(
+            text: longSyntaxEditorLine,
+            language: SyntaxLanguage.javascript,
+            lineWrappingEnabled: false
+        )
+        let editorView = SyntaxEditorView(testContext: model)
+        layoutIOSEditorView(editorView, width: 393, height: 658)
+
+        // A passive geometry query arms the weak preservation (UIKit issues
+        // these during ordinary layout on newer runtimes)...
+        _ = editorView.caretRect(for: editorView.beginningOfDocument)
+
+        // ...which must not swallow an explicit scroll from the embedding app,
+        let explicitOffsetX = iOSEditorStableHorizontalOffset(editorView)
+        editorView.setContentOffset(CGPoint(x: explicitOffsetX, y: 0), animated: false)
+        #expect(abs(editorView.contentOffset.x - explicitOffsetX) <= 1)
+
+        // ...and a same-turn interaction rect scroll preserves the accepted
+        // offset instead of restoring the stale pre-scroll one.
+        editorView.scrollRectToVisible(
+            CGRect(
+                x: editorView.contentSize.width - 4,
+                y: editorView.textContainerInset.top,
+                width: 2,
+                height: editorView.font.lineHeight
+            ),
+            animated: false
+        )
+        #expect(abs(editorView.contentOffset.x - explicitOffsetX) <= 1)
+    }
+
     @Test("SyntaxEditorView reports iOS visible content rect after horizontal scroll")
     @MainActor
     func syntaxEditorViewIOSVisibleContentRectTracksHorizontalScroll() {

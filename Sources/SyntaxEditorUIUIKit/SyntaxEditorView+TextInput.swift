@@ -51,7 +51,7 @@ extension SyntaxEditorView {
             SyntaxEditorView.TextRange(nsRange: selectedRange)
         }
         set {
-            preserveTextInteractionHorizontalOffsetForCurrentTurn()
+            preserveTextInteractionHorizontalOffsetForCurrentTurn(suppressesDirectScrolls: true)
             guard let newValue else {
                 setSelectedRange(
                     NSRange(location: 0, length: 0),
@@ -697,14 +697,14 @@ extension SyntaxEditorView {
     }
 
     public func closestPosition(to point: CGPoint) -> UITextPosition? {
-        preserveTextInteractionHorizontalOffsetForCurrentTurn()
+        preserveTextInteractionHorizontalOffsetForCurrentTurn(suppressesDirectScrolls: true)
         let result = closestTextPosition(to: point, constrainedTo: nil)
         trackTextInteractionCaretOverride(from: result, point: point)
         return result
     }
 
     public func closestPosition(to point: CGPoint, within range: UITextRange) -> UITextPosition? {
-        preserveTextInteractionHorizontalOffsetForCurrentTurn()
+        preserveTextInteractionHorizontalOffsetForCurrentTurn(suppressesDirectScrolls: true)
         let location = offset(from: beginningOfDocument, to: range.start)
         let length = offset(from: range.start, to: range.end)
         guard location >= 0, length >= 0 else { return nil }

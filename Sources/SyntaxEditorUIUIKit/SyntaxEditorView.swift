@@ -51,7 +51,9 @@ public final class SyntaxEditorView: UIScrollView, UITextInput, UITextInputTrait
     var lastAppliedFontSizeDelta: Int
     var isApplyingEditorOwnedScroll = false
     var isIgnoringTextInteractionHorizontalOffsetPreservation = false
+    var isPerformingTextInteractionRectScroll = false
     var preservedTextInteractionHorizontalOffset: CGFloat?
+    var preservedTextInteractionOffsetSuppressesDirectScrolls = false
     var textInteractionHorizontalOffsetLockGeneration = 0
     var lineMetrics = DocumentLineMetrics(tabWidth: SyntaxEditorView.estimatedTabColumnWidth)
     var lastAppliedDocumentRevision = 0
