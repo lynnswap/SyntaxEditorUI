@@ -29,8 +29,10 @@ package struct TOMLLanguage: SyntaxLanguageSupport {
     package func isInsideLiteralOrComment(source: String, location: Int) -> Bool {
         let nsSource = source as NSString
         let clampedLocation = max(0, min(location, nsSource.length))
-        let prefix = nsSource.substring(to: clampedLocation)
-        return PrefixAnalyzer(text: prefix).analysis.isInsideLiteralOrComment
+        var analysis = PrefixAnalysis()
+        var cursor = 0
+        PrefixAnalyzer.advance(&analysis, in: nsSource, cursor: &cursor, limit: clampedLocation)
+        return analysis.isInsideLiteralOrComment
     }
 }
 
@@ -52,17 +54,9 @@ private extension TOMLLanguage {
         }
     }
 
-    struct PrefixAnalyzer {
-        let analysis: PrefixAnalysis
-
-        init(text: String) {
-            let nsText = text as NSString
-            var analysis = PrefixAnalysis()
-            var cursor = 0
-            Self.advance(&analysis, in: nsText, cursor: &cursor, limit: nsText.length)
-            self.analysis = analysis
-        }
-
+    enum PrefixAnalyzer {
+        /// `limit` is treated as the end of the analyzed text: lookahead never
+        /// reads past it, matching what analyzing a prefix substring would see.
         static func advance(
             _ analysis: inout PrefixAnalysis,
             in source: NSString,
@@ -101,7 +95,7 @@ private extension TOMLLanguage {
                         continue
                     }
 
-                    if closesMultilineString(in: source, at: cursor, quote: doubleQuote) {
+                    if closesMultilineString(in: source, at: cursor, quote: doubleQuote, end: upperBound) {
                         analysis.inMultilineBasicString = false
                         cursor += 3
                         continue
@@ -145,7 +139,7 @@ private extension TOMLLanguage {
                 }
 
                 if analysis.inMultilineLiteralString {
-                    if closesMultilineString(in: source, at: cursor, quote: singleQuote) {
+                    if closesMultilineString(in: source, at: cursor, quote: singleQuote, end: upperBound) {
                         analysis.inMultilineLiteralString = false
                         cursor += 3
                         continue
@@ -171,13 +165,13 @@ private extension TOMLLanguage {
                     continue
                 }
 
-                if hasTripleQuote(in: source, at: cursor, quote: doubleQuote) {
+                if hasTripleQuote(in: source, at: cursor, quote: doubleQuote, end: upperBound) {
                     analysis.inMultilineBasicString = true
                     cursor += 3
                     continue
                 }
 
-                if hasTripleQuote(in: source, at: cursor, quote: singleQuote) {
+                if hasTripleQuote(in: source, at: cursor, quote: singleQuote, end: upperBound) {
                     analysis.inMultilineLiteralString = true
                     cursor += 3
                     continue
@@ -199,20 +193,20 @@ private extension TOMLLanguage {
             }
         }
 
-        static func hasTripleQuote(in source: NSString, at offset: Int, quote: unichar) -> Bool {
-            guard offset >= 0, offset + 2 < source.length else { return false }
+        static func hasTripleQuote(in source: NSString, at offset: Int, quote: unichar, end: Int) -> Bool {
+            guard offset >= 0, offset + 2 < end else { return false }
             return source.character(at: offset) == quote &&
                 source.character(at: offset + 1) == quote &&
                 source.character(at: offset + 2) == quote
         }
 
-        static func closesMultilineString(in source: NSString, at offset: Int, quote: unichar) -> Bool {
-            guard hasTripleQuote(in: source, at: offset, quote: quote) else {
+        static func closesMultilineString(in source: NSString, at offset: Int, quote: unichar, end: Int) -> Bool {
+            guard hasTripleQuote(in: source, at: offset, quote: quote, end: end) else {
                 return false
             }
 
             let nextOffset = offset + 3
-            guard nextOffset < source.length else {
+            guard nextOffset < end else {
                 return true
             }
 

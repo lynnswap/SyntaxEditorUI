@@ -30,8 +30,16 @@ package struct CSSLanguage: SyntaxLanguageSupport {
     package func isInsideLiteralOrComment(source: String, location: Int) -> Bool {
         let nsSource = source as NSString
         let clampedLocation = max(0, min(location, nsSource.length))
-        let prefix = nsSource.substring(to: clampedLocation)
-        return PrefixAnalyzer(text: prefix).analysis.isInsideLiteralOrComment
+        var analysis = PrefixAnalysis()
+        var cursor = 0
+        PrefixAnalyzer.advance(
+            &analysis,
+            in: nsSource,
+            cursor: &cursor,
+            limit: clampedLocation,
+            limitIsEndOfText: true
+        )
+        return analysis.isInsideLiteralOrComment
     }
 }
 
@@ -55,24 +63,20 @@ extension CSSLanguage {
         }
     }
 
-    package struct PrefixAnalyzer {
-        let analysis: PrefixAnalysis
-
-        init(text: String) {
-            let nsText = text as NSString
-            var analysis = PrefixAnalysis()
-            var cursor = 0
-            Self.advance(&analysis, in: nsText, cursor: &cursor, limit: nsText.length)
-            self.analysis = analysis
-        }
-
+    package enum PrefixAnalyzer {
+        /// `limitIsEndOfText` treats `limit` as the end of the analyzed text
+        /// (no lookahead past it), matching what analyzing a prefix substring
+        /// would see. Leave it `false` for streaming callers that keep
+        /// advancing the same cursor with growing limits.
         package static func advance(
             _ analysis: inout PrefixAnalysis,
             in source: NSString,
             cursor: inout Int,
-            limit: Int
+            limit: Int,
+            limitIsEndOfText: Bool = false
         ) {
             let upperBound = max(0, min(limit, source.length))
+            let lookaheadBound = limitIsEndOfText ? upperBound : source.length
             let singleQuote: unichar = 39
             let doubleQuote: unichar = 34
             let backslash: unichar = 92
@@ -81,7 +85,7 @@ extension CSSLanguage {
 
             while cursor < upperBound {
                 let codeUnit = source.character(at: cursor)
-                let nextCodeUnit: unichar? = cursor + 1 < source.length ? source.character(at: cursor + 1) : nil
+                let nextCodeUnit: unichar? = cursor + 1 < lookaheadBound ? source.character(at: cursor + 1) : nil
 
                 if analysis.inBlockComment {
                     if codeUnit == asterisk, nextCodeUnit == slash {

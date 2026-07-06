@@ -29,8 +29,7 @@ package struct SwiftLanguage: SyntaxLanguageSupport {
     package func isInsideLiteralOrComment(source: String, location: Int) -> Bool {
         let nsSource = source as NSString
         let clampedLocation = max(0, min(location, nsSource.length))
-        let prefix = nsSource.substring(to: clampedLocation)
-        return PrefixAnalyzer(text: prefix).analysis.isInsideLiteralOrComment
+        return PrefixAnalyzer.analysis(of: nsSource, upTo: clampedLocation).isInsideLiteralOrComment
     }
 }
 
@@ -68,11 +67,12 @@ private extension SwiftLanguage {
         case interpolation(parenDepth: Int)
     }
 
-    struct PrefixAnalyzer {
-        let analysis: PrefixAnalysis
-
-        init(text: String) {
-            let nsText = text as NSString
+    enum PrefixAnalyzer {
+        /// Analyzes `source` up to `limit`, treating `limit` as the end of the
+        /// text: lookahead never reads past it, matching what analyzing a
+        /// prefix substring would see.
+        static func analysis(of source: NSString, upTo limit: Int) -> PrefixAnalysis {
+            let end = max(0, min(limit, source.length))
             var contexts: [LexicalContext] = []
             var inLineComment = false
             var blockCommentDepth = 0
@@ -86,9 +86,9 @@ private extension SwiftLanguage {
             let openParen: unichar = 40
             let closeParen: unichar = 41
 
-            while cursor < nsText.length {
-                let codeUnit = nsText.character(at: cursor)
-                let nextCodeUnit: unichar? = cursor + 1 < nsText.length ? nsText.character(at: cursor + 1) : nil
+            while cursor < end {
+                let codeUnit = source.character(at: cursor)
+                let nextCodeUnit: unichar? = cursor + 1 < end ? source.character(at: cursor + 1) : nil
 
                 if inLineComment {
                     if codeUnit == lineFeed || codeUnit == carriageReturn {
@@ -124,9 +124,10 @@ private extension SwiftLanguage {
                     }
 
                     if let interpolationLength = Self.interpolationOpenerLength(
-                        in: nsText,
+                        in: source,
                         at: cursor,
-                        hashCount: stringContext.hashCount
+                        hashCount: stringContext.hashCount,
+                        end: end
                     ) {
                         contexts.append(.interpolation(parenDepth: 1))
                         cursor += interpolationLength
@@ -141,9 +142,10 @@ private extension SwiftLanguage {
                     }
 
                     if let closeLength = Self.stringCloseLength(
-                        in: nsText,
+                        in: source,
                         at: cursor,
-                        context: stringContext
+                        context: stringContext,
+                        end: end
                     ) {
                         _ = contexts.popLast()
                         cursor += closeLength
@@ -184,7 +186,7 @@ private extension SwiftLanguage {
                     continue
                 }
 
-                if let start = Self.stringStart(in: nsText, at: cursor) {
+                if let start = Self.stringStart(in: source, at: cursor, end: end) {
                     contexts.append(
                         .string(
                             StringContext(
@@ -206,27 +208,27 @@ private extension SwiftLanguage {
             if case .string = contexts.last {
                 analysis.inStringLiteralText = true
             }
-            self.analysis = analysis
+            return analysis
         }
 
-        private static func stringStart(in source: NSString, at offset: Int) -> StringStart? {
-            guard offset >= 0, offset < source.length else { return nil }
+        private static func stringStart(in source: NSString, at offset: Int, end: Int) -> StringStart? {
+            guard offset >= 0, offset < end else { return nil }
 
             let hash: unichar = 35
             let quote: unichar = 34
 
             var cursor = offset
             var hashCount = 0
-            while cursor < source.length, source.character(at: cursor) == hash {
+            while cursor < end, source.character(at: cursor) == hash {
                 hashCount += 1
                 cursor += 1
             }
 
-            guard cursor < source.length, source.character(at: cursor) == quote else {
+            guard cursor < end, source.character(at: cursor) == quote else {
                 return nil
             }
 
-            let isMultiline = cursor + 2 < source.length &&
+            let isMultiline = cursor + 2 < end &&
                 source.character(at: cursor + 1) == quote &&
                 source.character(at: cursor + 2) == quote
 
@@ -237,9 +239,10 @@ private extension SwiftLanguage {
         private static func interpolationOpenerLength(
             in source: NSString,
             at offset: Int,
-            hashCount: Int
+            hashCount: Int,
+            end: Int
         ) -> Int? {
-            guard offset >= 0, offset < source.length else { return nil }
+            guard offset >= 0, offset < end else { return nil }
 
             let backslash: unichar = 92
             let hash: unichar = 35
@@ -249,13 +252,13 @@ private extension SwiftLanguage {
             var cursor = offset + 1
 
             for _ in 0..<hashCount {
-                guard cursor < source.length, source.character(at: cursor) == hash else {
+                guard cursor < end, source.character(at: cursor) == hash else {
                     return nil
                 }
                 cursor += 1
             }
 
-            guard cursor < source.length, source.character(at: cursor) == openParen else {
+            guard cursor < end, source.character(at: cursor) == openParen else {
                 return nil
             }
 
@@ -265,15 +268,16 @@ private extension SwiftLanguage {
         private static func stringCloseLength(
             in source: NSString,
             at offset: Int,
-            context: StringContext
+            context: StringContext,
+            end: Int
         ) -> Int? {
-            guard offset >= 0, offset < source.length else { return nil }
+            guard offset >= 0, offset < end else { return nil }
 
             let quote: unichar = 34
             let hash: unichar = 35
 
             if context.isMultiline {
-                guard offset + 2 < source.length,
+                guard offset + 2 < end,
                       source.character(at: offset) == quote,
                       source.character(at: offset + 1) == quote,
                       source.character(at: offset + 2) == quote
@@ -283,7 +287,7 @@ private extension SwiftLanguage {
 
                 var cursor = offset + 3
                 for _ in 0..<context.hashCount {
-                    guard cursor < source.length, source.character(at: cursor) == hash else {
+                    guard cursor < end, source.character(at: cursor) == hash else {
                         return nil
                     }
                     cursor += 1
@@ -297,7 +301,7 @@ private extension SwiftLanguage {
 
             var cursor = offset + 1
             for _ in 0..<context.hashCount {
-                guard cursor < source.length, source.character(at: cursor) == hash else {
+                guard cursor < end, source.character(at: cursor) == hash else {
                     return nil
                 }
                 cursor += 1
