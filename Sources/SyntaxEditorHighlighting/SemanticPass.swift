@@ -308,10 +308,15 @@ final class ObjectiveCSemanticPass: SemanticPass {
 /// The overlay set is therefore shift-only, which the token planes already
 /// performed — the plan is `.reuse`. Everything else stays the conservative
 /// full merge.
-final class CSSSemanticPass: SemanticPass {
-    struct RawTextRegions {
-        let all: [NSRange]
-        let css: [NSRange]
+package final class CSSSemanticPass: SemanticPass {
+    package struct RawTextRegions {
+        package let all: [NSRange]
+        package let css: [NSRange]
+
+        package init(all: [NSRange], css: [NSRange]) {
+            self.all = all
+            self.css = css
+        }
     }
 
     private struct State {
@@ -322,11 +327,11 @@ final class CSSSemanticPass: SemanticPass {
     private let rawTextRegionsProvider: ((String) -> RawTextRegions)?
     private var state: State?
 
-    init(rawTextRegionsProvider: ((String) -> RawTextRegions)?) {
+    package init(rawTextRegionsProvider: ((String) -> RawTextRegions)?) {
         self.rawTextRegionsProvider = rawTextRegionsProvider
     }
 
-    func fullMerge(
+    package func fullMerge(
         tokens: [SyntaxEditorHighlighting.Token],
         source: String,
         rootNode: Node?
@@ -349,7 +354,7 @@ final class CSSSemanticPass: SemanticPass {
         )
     }
 
-    func plannedUpdate(
+    package func plannedUpdate(
         mutation: SyntaxEditorTextChange.Replacement,
         envelope: NSRange,
         source: String,
@@ -377,14 +382,28 @@ final class CSSSemanticPass: SemanticPass {
             return .full
         }
 
-        // Quote characters toggle the only analyzer state that can leak past
-        // the engine's markup-boundary guard (quoted attribute values may
-        // contain '>'); adding or removing one can move region boundaries
-        // far from the edit.
+        // Two edit classes can still move region boundaries after the
+        // engine's markup-boundary guard excluded '<'/'>' edits:
+        // - quote characters (quoted attribute values may contain '>', so
+        //   quote parity is the one tag-state input that ripples), and
+        // - edits completing or destroying a multi-character delimiter
+        //   around a pre-existing bracket ('<!--', '-->', '<![CDATA['): every
+        //   such token keeps a '<' or '>' within delimiter length of the
+        //   changed span, so a bracket-free window proves the edit inert.
         let removedText = nsPrevious.substring(
             with: NSRange(location: mutation.location, length: mutation.length)
         )
-        guard !Self.containsQuote(removedText), !Self.containsQuote(mutation.replacement) else {
+        guard !Self.containsQuote(removedText),
+              !Self.containsQuote(mutation.replacement),
+              !Self.windowContainsAngleBracket(
+                  in: nsPrevious,
+                  around: NSRange(location: mutation.location, length: mutation.length)
+              ),
+              !Self.windowContainsAngleBracket(
+                  in: nsNext,
+                  around: NSRange(location: mutation.location, length: replacementLength)
+              )
+        else {
             state = nil
             return .full
         }
@@ -419,7 +438,7 @@ final class CSSSemanticPass: SemanticPass {
     /// Only reached on the `.reuse` path, whose plan guarantees the envelope
     /// is disjoint from every CSS scanning range — there are no overlays to
     /// produce (or clear) there.
-    func overlayTokens(
+    package func overlayTokens(
         in targetRange: NSRange,
         baseTokens: [SyntaxEditorHighlighting.Token],
         source: String
@@ -427,12 +446,29 @@ final class CSSSemanticPass: SemanticPass {
         []
     }
 
-    func invalidate() {
+    package func invalidate() {
         state = nil
     }
 
     private static func containsQuote(_ text: String) -> Bool {
         text.utf16.contains { $0 == 34 || $0 == 39 }
+    }
+
+    /// Longest HTML delimiter the analyzer recognizes ("<![CDATA[").
+    private static let delimiterWindow = 9
+
+    private static func windowContainsAngleBracket(in source: NSString, around span: NSRange) -> Bool {
+        let lower = max(0, span.location - delimiterWindow)
+        let upper = min(source.length, span.upperBound + delimiterWindow)
+        var cursor = lower
+        while cursor < upper {
+            let codeUnit = source.character(at: cursor)
+            if codeUnit == 60 || codeUnit == 62 {
+                return true
+            }
+            cursor += 1
+        }
+        return false
     }
 
     private static func touches(_ range: NSRange, _ span: NSRange) -> Bool {

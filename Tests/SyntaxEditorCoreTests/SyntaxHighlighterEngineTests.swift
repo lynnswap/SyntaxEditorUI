@@ -1377,7 +1377,7 @@ extension SyntaxHighlighterEngineTests {
     </script>
     </head>
     <body>
-    <p>ReferenceParagraphMarker body text</p>
+    <p>leading filler ReferenceParagraphMarker body text trailing filler</p>
     </body>
     </html>
     """
@@ -1464,5 +1464,129 @@ extension SyntaxHighlighterEngineTests {
             source: source,
             language: .css
         ))
+    }
+}
+
+extension SyntaxHighlighterEngineTests {
+    /// Plan-level checks: the CSS pass must reuse for exactly the provable
+    /// class (region-outside, quote-free, no bracket in the delimiter window)
+    /// and fall back everywhere else. The settle-equality tests above cover
+    /// the end-to-end result; these prove the fast path actually engages.
+    private func plannedCSSPlan(
+        source: String,
+        editing target: String,
+        replacement: String
+    ) -> SemanticUpdatePlan? {
+        let nsSource = source as NSString
+        let targetRange = nsSource.range(of: target)
+        guard targetRange.location != NSNotFound else { return nil }
+        // Stub provider: the region layout is derived directly from the
+        // fixture so this tests the plan logic, not the HTML scanner (which
+        // has its own coverage).
+        let pass = CSSSemanticPass(rawTextRegionsProvider: { source in
+            let ns = source as NSString
+            var all: [NSRange] = []
+            var css: [NSRange] = []
+            let styleOpen = ns.range(of: "<style>")
+            let styleClose = ns.range(of: "</style>")
+            if styleOpen.location != NSNotFound, styleClose.location != NSNotFound {
+                all.append(NSRange(
+                    location: styleOpen.location,
+                    length: styleClose.location - styleOpen.location
+                ))
+                css.append(NSRange(
+                    location: styleOpen.upperBound,
+                    length: styleClose.location - styleOpen.upperBound
+                ))
+            }
+            let scriptOpen = ns.range(of: "<script>")
+            let scriptClose = ns.range(of: "</script>")
+            if scriptOpen.location != NSNotFound, scriptClose.location != NSNotFound {
+                all.append(NSRange(
+                    location: scriptOpen.location,
+                    length: scriptClose.location - scriptOpen.location
+                ))
+            }
+            return CSSSemanticPass.RawTextRegions(all: all, css: css)
+        })
+        _ = pass.fullMerge(tokens: [], source: source, rootNode: nil)
+
+        let next = nsSource.replacingCharacters(in: targetRange, with: replacement)
+        let mutation = SyntaxEditorTextChange.Replacement(
+            location: targetRange.location,
+            length: targetRange.length,
+            replacement: replacement
+        )
+        let envelope = (next as NSString).lineRange(
+            for: NSRange(location: targetRange.location, length: replacement.utf16.count)
+        )
+        return pass.plannedUpdate(
+            mutation: mutation,
+            envelope: envelope,
+            source: next,
+            previousSource: source,
+            rootNode: nil
+        )
+    }
+
+    @Test("CSSSemanticPass reuses for region-outside quote-free HTML edits")
+    func cssSemanticPassReusesForRegionOutsideEdits() throws {
+        let plan = plannedCSSPlan(
+            source: Self.plannedCSSHTMLSource,
+            editing: "ReferenceParagraphMarker",
+            replacement: "ReferenceParagraphMarkerEdited"
+        )
+        guard case .reuse = plan else {
+            Issue.record("expected .reuse, got \(String(describing: plan))")
+            return
+        }
+    }
+
+    @Test("CSSSemanticPass falls back for HTML comment delimiter completions")
+    func cssSemanticPassFallsBackForCommentDelimiterCompletions() throws {
+        // Completing '<!--' from '<!-' with a plain hyphen touches no angle
+        // bracket and sits outside every region, yet comments away the later
+        // <style> region — the pre-existing '<' inside the delimiter window
+        // must force the conservative merge.
+        let source = """
+        <html>
+        <body>
+        <p>lead paragraph text</p>
+        <!- pending comment opener
+        <style>
+        @media screen { .card { color: red; } }
+        </style>
+        -->
+        </body>
+        </html>
+        """
+        let plan = plannedCSSPlan(source: source, editing: "!- pending", replacement: "!-- pending")
+        guard case .full = plan else {
+            Issue.record("expected .full, got \(String(describing: plan))")
+            return
+        }
+    }
+
+    @Test("CSSSemanticPass falls back for quote and in-region HTML edits")
+    func cssSemanticPassFallsBackForQuoteAndRegionEdits() throws {
+        let quotePlan = plannedCSSPlan(
+            source: Self.plannedCSSHTMLSource,
+            editing: "body text",
+            replacement: "body's text"
+        )
+        guard case .full = quotePlan else {
+            Issue.record("expected .full for quote edit, got \(String(describing: quotePlan))")
+            return
+        }
+
+        let stylePlan = plannedCSSPlan(
+            source: Self.plannedCSSHTMLSource,
+            editing: "color: red",
+            replacement: "color: green"
+        )
+        guard case .full = stylePlan else {
+            Issue.record("expected .full for style edit, got \(String(describing: stylePlan))")
+            return
+        }
     }
 }
