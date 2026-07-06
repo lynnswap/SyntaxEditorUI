@@ -17,7 +17,7 @@ import SyntaxEditorLanguageSupport
 /// legacy display order are applied here, so the full and incremental paths
 /// materialize identically by construction.
 package final class LineTokenPlanes {
-    package struct PackedSegment: Equatable {
+    package struct PackedSegment: Hashable {
         var startCol: UInt32
         var endCol: UInt32
         var styleID: UInt16
@@ -259,14 +259,18 @@ package final class LineTokenPlanes {
     private func removeSegments(at indices: [Int], line: Int, overlayPlane: Bool) {
         guard !indices.isEmpty else { return }
         let removal = Set(indices)
+        func removing(_ segments: ContiguousArray<PackedSegment>) -> ContiguousArray<PackedSegment> {
+            var kept = ContiguousArray<PackedSegment>()
+            kept.reserveCapacity(max(0, segments.count - removal.count))
+            for (index, segment) in segments.enumerated() where !removal.contains(index) {
+                kept.append(segment)
+            }
+            return kept
+        }
         if overlayPlane {
-            lines[line].overlay = ContiguousArray(lines[line].overlay.enumerated()
-                .filter { !removal.contains($0.offset) }
-                .map(\.element))
+            lines[line].overlay = removing(lines[line].overlay)
         } else {
-            lines[line].base = ContiguousArray(lines[line].base.enumerated()
-                .filter { !removal.contains($0.offset) }
-                .map(\.element))
+            lines[line].base = removing(lines[line].base)
         }
     }
 
@@ -359,6 +363,21 @@ package final class LineTokenPlanes {
             var lower = Int.max
             var upper = Int.min
             func accumulate(_ beforeSegments: ContiguousArray<PackedSegment>, _ afterSegments: ContiguousArray<PackedSegment>) {
+                // Token-dense lines (minified sources) make the pairwise
+                // contains() quadratic; hash membership keeps them linear.
+                if beforeSegments.count > 8, afterSegments.count > 8 {
+                    let beforeSet = Set(beforeSegments)
+                    let afterSet = Set(afterSegments)
+                    for segment in beforeSegments where !afterSet.contains(segment) {
+                        lower = min(lower, Int(segment.startCol))
+                        upper = max(upper, Int(segment.endCol))
+                    }
+                    for segment in afterSegments where !beforeSet.contains(segment) {
+                        lower = min(lower, Int(segment.startCol))
+                        upper = max(upper, Int(segment.endCol))
+                    }
+                    return
+                }
                 for segment in beforeSegments where !afterSegments.contains(segment) {
                     lower = min(lower, Int(segment.startCol))
                     upper = max(upper, Int(segment.endCol))
@@ -892,7 +911,11 @@ package final class LineTokenPlanes {
         var keep = [Bool](repeating: true, count: results.count)
         for (index, entry) in results.enumerated() {
             let style = styles[entry.styleID]
-            let key = DedupKey(location: entry.range.location, length: entry.range.length, name: style.rawCaptureName)
+            let key = DedupKey(
+                location: entry.range.location,
+                length: entry.range.length,
+                nameOrdinal: styles.captureNameOrdinal[Int(entry.styleID)]
+            )
             if let existing = bestByKey[key] {
                 let existingIsOverlay = styles[results[existing].styleID].isSemanticOverlay
                 if style.isSemanticOverlay && !existingIsOverlay {
@@ -1004,7 +1027,7 @@ package final class LineTokenPlanes {
     private struct DedupKey: Hashable {
         let location: Int
         let length: Int
-        let name: String
+        let nameOrdinal: UInt16
     }
 
     private func joinPlane(

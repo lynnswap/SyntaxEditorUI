@@ -32,6 +32,10 @@ package final class HighlightStyleTable {
     /// | name ordinal — equal-position ties resolve identically to the legacy
     /// display order (priority, specificity, capture-name lexicographic).
     package private(set) var displayRank: ContiguousArray<UInt32> = []
+    /// Per-style capture-name ordinal: two styles share an ordinal exactly
+    /// when their `rawCaptureName`s are equal, so dedup keys can hash an
+    /// integer instead of the name.
+    package private(set) var captureNameOrdinal: ContiguousArray<UInt16> = []
     private var lookup: [Style: UInt16] = [:]
     /// Lexicographically ordered capture names get stable ordinals lazily; the
     /// ordinal preserves `rawCaptureName` ascending order among styles that tie
@@ -63,7 +67,9 @@ package final class HighlightStyleTable {
         precondition(styles.count < Int(UInt16.max), "style table overflow")
         let id = UInt16(styles.count)
         styles.append(style)
-        displayRank.append(Self.rank(for: style, ordinal: nameOrdinal(for: style.rawCaptureName)))
+        let ordinal = nameOrdinal(for: style.rawCaptureName)
+        displayRank.append(Self.rank(for: style, ordinal: ordinal))
+        captureNameOrdinal.append(ordinal)
         lookup[style] = id
         return id
     }
