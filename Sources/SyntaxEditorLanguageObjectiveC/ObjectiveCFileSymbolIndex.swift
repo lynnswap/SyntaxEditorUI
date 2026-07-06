@@ -1158,6 +1158,7 @@ struct ObjectiveCFileSymbolIndex {
         }
 
         var ranges = Set<ObjectiveCRangeKey>()
+        let string = source as String
         for scope in functionLikeScopes(in: source) {
             var parameterShadowStarts: [String: Int] = [:]
             collectParameterShadows(
@@ -1178,12 +1179,31 @@ struct ObjectiveCFileSymbolIndex {
                 nonCodeRangeIndex: nonCodeRangeIndex,
                 into: &shadowScopes
             )
+            guard !shadowScopes.isEmpty else { continue }
 
+            // One identifier pass over the union of the shadow ranges instead
+            // of one regex pass per shadowed name: matches resolve through a
+            // name -> ranges map.
+            var rangesByName: [String: [NSRange]] = [:]
+            var scanLower = Int.max
+            var scanUpper = Int.min
             for shadowScope in shadowScopes {
-                for range in identifierRanges(named: shadowScope.name, in: shadowScope.range, source: source) {
-                    guard !nonCodeRangeIndex.intersects(range) else { continue }
-                    ranges.insert(ObjectiveCRangeKey(range))
+                rangesByName[shadowScope.name, default: []].append(shadowScope.range)
+                scanLower = min(scanLower, shadowScope.range.location)
+                scanUpper = max(scanUpper, shadowScope.range.upperBound)
+            }
+            let scanRange = NSRange(location: scanLower, length: max(0, scanUpper - scanLower))
+            for match in identifierRegex.matches(in: string, range: scanRange) {
+                let matchRange = match.range
+                guard let candidates = rangesByName[source.substring(with: matchRange)],
+                      candidates.contains(where: {
+                          $0.location <= matchRange.location && matchRange.upperBound <= $0.upperBound
+                      }),
+                      !nonCodeRangeIndex.intersects(matchRange)
+                else {
+                    continue
                 }
+                ranges.insert(ObjectiveCRangeKey(matchRange))
             }
         }
         return ranges
@@ -1525,14 +1545,6 @@ struct ObjectiveCFileSymbolIndex {
             cursor += 1
         }
         return stack.last
-    }
-
-    private static func identifierRanges(named name: String, in range: NSRange, source: NSString) -> [NSRange] {
-        identifierRegex
-            .matches(in: source as String, range: range)
-            .compactMap { match in
-                source.substring(with: match.range) == name ? match.range : nil
-            }
     }
 
     private static func methodParameterNameRange(_ range: NSRange, in header: NSString) -> Bool {
