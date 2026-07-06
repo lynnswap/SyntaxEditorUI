@@ -595,21 +595,23 @@ struct ObjectiveCFileSymbolIndex {
         }
         var cursor = start
         while cursor < source.length {
-            let character = source.substring(with: NSRange(location: cursor, length: 1))
-            if character == ";" {
+            let character = source.character(at: cursor)
+            if character == UInt16((";" as UnicodeScalar).value) {
                 return NSRange(location: start, length: cursor - start + 1)
             }
-            if character == "\n" || character == "\r" {
+            if character == UInt16(("\n" as UnicodeScalar).value) || character == UInt16(("\r" as UnicodeScalar).value) {
                 let nextLineStart = cursor + 1
                 if nextLineStart < source.length {
                     var lookahead = nextLineStart
                     while lookahead < source.length,
-                          isWhitespace(source.substring(with: NSRange(location: lookahead, length: 1))) {
+                          isWhitespaceCodeUnit(source.character(at: lookahead)) {
                         lookahead += 1
                     }
                     if lookahead < source.length {
-                        let next = source.substring(with: NSRange(location: lookahead, length: 1))
-                        if next == "@" || next == "-" || next == "+" {
+                        let next = source.character(at: lookahead)
+                        if next == UInt16(("@" as UnicodeScalar).value)
+                            || next == UInt16(("-" as UnicodeScalar).value)
+                            || next == UInt16(("+" as UnicodeScalar).value) {
                             return nil
                         }
                     }
@@ -623,15 +625,15 @@ struct ObjectiveCFileSymbolIndex {
     private static func propertyDeclarationIsComplete(_ declaration: NSString) -> Bool {
         var cursor = declaration.length - 1
         while cursor >= 0 {
-            let character = declaration.substring(with: NSRange(location: cursor, length: 1))
-            if isWhitespace(character) {
+            let character = declaration.character(at: cursor)
+            if isWhitespaceCodeUnit(character) {
                 if cursor == 0 {
                     return false
                 }
                 cursor -= 1
                 continue
             }
-            return character == ";"
+            return character == UInt16((";" as UnicodeScalar).value)
         }
         return false
     }
@@ -1158,6 +1160,7 @@ struct ObjectiveCFileSymbolIndex {
         }
 
         var ranges = Set<ObjectiveCRangeKey>()
+        let string = source as String
         for scope in functionLikeScopes(in: source) {
             var parameterShadowStarts: [String: Int] = [:]
             collectParameterShadows(
@@ -1178,12 +1181,31 @@ struct ObjectiveCFileSymbolIndex {
                 nonCodeRangeIndex: nonCodeRangeIndex,
                 into: &shadowScopes
             )
+            guard !shadowScopes.isEmpty else { continue }
 
+            // One identifier pass over the union of the shadow ranges instead
+            // of one regex pass per shadowed name: matches resolve through a
+            // name -> ranges map.
+            var rangesByName: [String: [NSRange]] = [:]
+            var scanLower = Int.max
+            var scanUpper = Int.min
             for shadowScope in shadowScopes {
-                for range in identifierRanges(named: shadowScope.name, in: shadowScope.range, source: source) {
-                    guard !nonCodeRangeIndex.intersects(range) else { continue }
-                    ranges.insert(ObjectiveCRangeKey(range))
+                rangesByName[shadowScope.name, default: []].append(shadowScope.range)
+                scanLower = min(scanLower, shadowScope.range.location)
+                scanUpper = max(scanUpper, shadowScope.range.upperBound)
+            }
+            let scanRange = NSRange(location: scanLower, length: max(0, scanUpper - scanLower))
+            for match in identifierRegex.matches(in: string, range: scanRange) {
+                let matchRange = match.range
+                guard let candidates = rangesByName[source.substring(with: matchRange)],
+                      candidates.contains(where: {
+                          $0.location <= matchRange.location && matchRange.upperBound <= $0.upperBound
+                      }),
+                      !nonCodeRangeIndex.intersects(matchRange)
+                else {
+                    continue
                 }
+                ranges.insert(ObjectiveCRangeKey(matchRange))
             }
         }
         return ranges
@@ -1525,14 +1547,6 @@ struct ObjectiveCFileSymbolIndex {
             cursor += 1
         }
         return stack.last
-    }
-
-    private static func identifierRanges(named name: String, in range: NSRange, source: NSString) -> [NSRange] {
-        identifierRegex
-            .matches(in: source as String, range: range)
-            .compactMap { match in
-                source.substring(with: match.range) == name ? match.range : nil
-            }
     }
 
     private static func methodParameterNameRange(_ range: NSRange, in header: NSString) -> Bool {
@@ -2258,7 +2272,7 @@ struct ObjectiveCFileSymbolIndex {
 
     private static func trailingFunctionLikeMacroRange(in declaration: NSString, end: Int) -> NSRange? {
         guard end > 0,
-              declaration.substring(with: NSRange(location: end - 1, length: 1)) == ")",
+              declaration.character(at: end - 1) == UInt16((")" as UnicodeScalar).value),
               let openParen = matchingOpeningParenthesis(in: declaration, before: end),
               let nameRange = identifierRange(before: openParen, in: declaration)
         else {
@@ -2276,10 +2290,10 @@ struct ObjectiveCFileSymbolIndex {
         var depth = 0
         var cursor = end - 1
         while cursor >= 0 {
-            let character = declaration.substring(with: NSRange(location: cursor, length: 1))
-            if character == ")" {
+            let character = declaration.character(at: cursor)
+            if character == UInt16((")" as UnicodeScalar).value) {
                 depth += 1
-            } else if character == "(" {
+            } else if character == UInt16(("(" as UnicodeScalar).value) {
                 depth -= 1
                 if depth == 0 {
                     return cursor
@@ -2377,7 +2391,7 @@ struct ObjectiveCFileSymbolIndex {
     private static func propertyBodyStart(in declaration: NSString) -> Int {
         var cursor = "@property".utf16.count
         while cursor < declaration.length,
-              isWhitespace(declaration.substring(with: NSRange(location: cursor, length: 1))) {
+              isWhitespaceCodeUnit(declaration.character(at: cursor)) {
             cursor += 1
         }
 

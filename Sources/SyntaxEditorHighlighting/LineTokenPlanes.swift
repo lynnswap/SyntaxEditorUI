@@ -17,7 +17,7 @@ import SyntaxEditorLanguageSupport
 /// legacy display order are applied here, so the full and incremental paths
 /// materialize identically by construction.
 package final class LineTokenPlanes {
-    package struct PackedSegment: Equatable {
+    package struct PackedSegment: Hashable {
         var startCol: UInt32
         var endCol: UInt32
         var styleID: UInt16
@@ -259,14 +259,18 @@ package final class LineTokenPlanes {
     private func removeSegments(at indices: [Int], line: Int, overlayPlane: Bool) {
         guard !indices.isEmpty else { return }
         let removal = Set(indices)
+        func removing(_ segments: ContiguousArray<PackedSegment>) -> ContiguousArray<PackedSegment> {
+            var kept = ContiguousArray<PackedSegment>()
+            kept.reserveCapacity(max(0, segments.count - removal.count))
+            for (index, segment) in segments.enumerated() where !removal.contains(index) {
+                kept.append(segment)
+            }
+            return kept
+        }
         if overlayPlane {
-            lines[line].overlay = ContiguousArray(lines[line].overlay.enumerated()
-                .filter { !removal.contains($0.offset) }
-                .map(\.element))
+            lines[line].overlay = removing(lines[line].overlay)
         } else {
-            lines[line].base = ContiguousArray(lines[line].base.enumerated()
-                .filter { !removal.contains($0.offset) }
-                .map(\.element))
+            lines[line].base = removing(lines[line].base)
         }
     }
 
@@ -359,6 +363,21 @@ package final class LineTokenPlanes {
             var lower = Int.max
             var upper = Int.min
             func accumulate(_ beforeSegments: ContiguousArray<PackedSegment>, _ afterSegments: ContiguousArray<PackedSegment>) {
+                // Token-dense lines (minified sources) make the pairwise
+                // contains() quadratic; hash membership keeps them linear.
+                if beforeSegments.count > 8, afterSegments.count > 8 {
+                    let beforeSet = Set(beforeSegments)
+                    let afterSet = Set(afterSegments)
+                    for segment in beforeSegments where !afterSet.contains(segment) {
+                        lower = min(lower, Int(segment.startCol))
+                        upper = max(upper, Int(segment.endCol))
+                    }
+                    for segment in afterSegments where !beforeSet.contains(segment) {
+                        lower = min(lower, Int(segment.startCol))
+                        upper = max(upper, Int(segment.endCol))
+                    }
+                    return
+                }
                 for segment in beforeSegments where !afterSegments.contains(segment) {
                     lower = min(lower, Int(segment.startCol))
                     upper = max(upper, Int(segment.endCol))
@@ -892,7 +911,11 @@ package final class LineTokenPlanes {
         var keep = [Bool](repeating: true, count: results.count)
         for (index, entry) in results.enumerated() {
             let style = styles[entry.styleID]
-            let key = DedupKey(location: entry.range.location, length: entry.range.length, name: style.rawCaptureName)
+            let key = DedupKey(
+                location: entry.range.location,
+                length: entry.range.length,
+                nameOrdinal: styles.captureNameOrdinal[Int(entry.styleID)]
+            )
             if let existing = bestByKey[key] {
                 let existingIsOverlay = styles[results[existing].styleID].isSemanticOverlay
                 if style.isSemanticOverlay && !existingIsOverlay {
@@ -935,10 +958,76 @@ package final class LineTokenPlanes {
         return tokens
     }
 
+    /// Base-plane-only variant of `tokens(in:)` for semantic merge input:
+    /// same continuation joining and display ordering, but no overlay join
+    /// and no cross-plane dedup (a single plane cannot produce the
+    /// cross-plane duplicates the dedup exists for). Halves the
+    /// document-sized input build the monolithic semantic passes pay.
+    package func baseTokens(
+        in range: NSRange? = nil,
+        lineTable: HighlightLineTable
+    ) -> [SyntaxEditorHighlighting.Token] {
+        guard !lines.isEmpty else { return [] }
+        let lineRange: Range<Int>
+        if let range {
+            lineRange = lineTable.lineRange(containingUTF16Range: range)
+        } else {
+            lineRange = 0..<lines.count
+        }
+        let lower = min(max(0, lineRange.lowerBound), lines.count)
+        var upper = min(max(lower, lineRange.upperBound), lines.count)
+        guard lower < upper else { return [] }
+
+        var start = lower
+        while start > 0, crossesBoundary(above: start) {
+            start -= 1
+        }
+        while upper < lines.count, crossesBoundary(above: upper) {
+            upper += 1
+        }
+
+        var results: [(range: NSRange, styleID: UInt16)] = []
+        var openBase: [(start: Int, end: Int, styleID: UInt16)] = []
+        for line in start..<upper {
+            joinPlane(
+                segments: lines[line].base,
+                lineStart: lineTable.lineStartOffset(at: line),
+                open: &openBase,
+                results: &results
+            )
+        }
+        for token in openBase {
+            results.append((NSRange(location: token.start, length: token.end - token.start), token.styleID))
+        }
+
+        results.sort { lhs, rhs in
+            if lhs.range.location != rhs.range.location {
+                return lhs.range.location < rhs.range.location
+            }
+            if lhs.range.length != rhs.range.length {
+                return lhs.range.length > rhs.range.length
+            }
+            return styles.displayOrder(of: lhs.styleID, before: rhs.styleID)
+        }
+        var tokens: [SyntaxEditorHighlighting.Token] = []
+        tokens.reserveCapacity(results.count)
+        for entry in results {
+            let style = styles[entry.styleID]
+            tokens.append(SyntaxEditorHighlighting.Token(
+                range: entry.range,
+                syntaxID: style.syntaxID,
+                language: style.language,
+                rawCaptureName: style.rawCaptureName,
+                isSemanticOverlay: style.isSemanticOverlay
+            ))
+        }
+        return tokens
+    }
+
     private struct DedupKey: Hashable {
         let location: Int
         let length: Int
-        let name: String
+        let nameOrdinal: UInt16
     }
 
     private func joinPlane(

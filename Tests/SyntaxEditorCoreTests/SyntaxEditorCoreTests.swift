@@ -677,4 +677,30 @@ struct SyntaxEditorCoreTests {
         #expect(ranges[0].length == 1)
         #expect(ranges[1].length == 1)
     }
+
+    @Test("BracketMatcher matches across chunk boundaries and ignores non-ASCII")
+    func bracketMatcherMatchesAcrossChunks() {
+        let filler = String(repeating: "あ(x)🙂 ", count: 400)
+        let source = "{" + filler + "}"
+        let nsSource = source as NSString
+
+        let forward = BracketMatcher.matchedRanges(in: source, caretUTF16Offset: 1)
+        #expect(forward == [
+            NSRange(location: 0, length: 1),
+            NSRange(location: nsSource.length - 1, length: 1),
+        ])
+
+        let backward = BracketMatcher.matchedRanges(in: source, caretUTF16Offset: nsSource.length)
+        #expect(backward == forward)
+    }
+
+    @Test("BracketMatcher stops scanning at the distance cap")
+    func bracketMatcherHonorsScanCap() {
+        let filler = String(repeating: "x", count: BracketMatcher.maxScanDistance + 16)
+        let source = "(" + filler + ")"
+
+        let ranges = BracketMatcher.matchedRanges(in: source, caretUTF16Offset: 1)
+
+        #expect(ranges.isEmpty)
+    }
 }

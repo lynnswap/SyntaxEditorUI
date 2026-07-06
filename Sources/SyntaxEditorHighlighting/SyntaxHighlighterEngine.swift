@@ -716,16 +716,17 @@ package final class HighlightSession {
         )
         source = nextSource
         layeredSource = nextLayeredSource
+        let layeredReplacementLength = layeredMutation.replacement.utf16.count
         refreshDebt.splice(
             location: layeredMutation.location,
             oldLength: layeredMutation.length,
-            newLength: layeredMutation.replacement.utf16.count,
+            newLength: layeredReplacementLength,
             documentLength: nextLength
         )
         semanticDebt.splice(
             location: layeredMutation.location,
             oldLength: layeredMutation.length,
-            newLength: layeredMutation.replacement.utf16.count,
+            newLength: layeredReplacementLength,
             documentLength: nextLength
         )
         // Any in-flight off-actor merge is now stale; cancel it so its polls
@@ -740,7 +741,7 @@ package final class HighlightSession {
         let editedExtent = SyntaxEditorRangeUtilities.clampedRange(
             NSRange(
                 location: layeredMutation.location,
-                length: max(1, layeredMutation.replacement.utf16.count + 1)
+                length: max(1, layeredReplacementLength + 1)
             ),
             utf16Length: nextLength
         )
@@ -784,7 +785,12 @@ package final class HighlightSession {
                 source: nextLayeredSource
             )
             var runConservative = true
-            if let plan = semanticPass.plannedUpdate(
+            // A monolithic merge writes the pass's state from its detached
+            // task on completion; planning against that state mid-flight
+            // would race the write. The merge was already cancelled above —
+            // skip planning and let the drain settle it.
+            if monolithicMergeTask == nil,
+               let plan = semanticPass.plannedUpdate(
                 mutation: layeredMutation,
                 envelope: planEnvelope,
                 source: nextLayeredSource,
@@ -832,8 +838,7 @@ package final class HighlightSession {
                                 cancelled = true
                                 break
                             }
-                            let baseTokens = planes.tokens(in: target, lineTable: lineTable)
-                                .filter { !$0.isSemanticOverlay }
+                            let baseTokens = planes.baseTokens(in: target, lineTable: lineTable)
                             let overlays = semanticPass.overlayTokens(
                                 in: target,
                                 baseTokens: baseTokens,
@@ -883,9 +888,10 @@ package final class HighlightSession {
             // repaint duty (base patch included) for the successor.
             refreshDebt.insert(resultRefresh)
         }
-        resultRefresh = SyntaxEditorRangeUtilities.clampedRange(resultRefresh, utf16Length: nextSource.utf16.count)
+        let nextSourceUTF16Length = nextSource.utf16.count
+        resultRefresh = SyntaxEditorRangeUtilities.clampedRange(resultRefresh, utf16Length: nextSourceUTF16Length)
         let normalizedResultRefreshRanges = Self.mergedRanges(resultRefreshRanges.map {
-            SyntaxEditorRangeUtilities.clampedRange($0, utf16Length: nextSource.utf16.count)
+            SyntaxEditorRangeUtilities.clampedRange($0, utf16Length: nextSourceUTF16Length)
         })
         let replacementPayloadTokens = normalizedResultRefreshRanges.flatMap {
             planes.tokens(in: $0, lineTable: lineTable)
@@ -938,6 +944,11 @@ package final class HighlightSession {
         // so the pass state has exactly one writer at a time.
         guard semanticPass.supportsChunkedFullPass else {
             while !semanticDebt.isEmpty {
+                // Let an already-queued keystroke land before each round: its
+                // cancellation bails this drain out before the document-sized
+                // input materialization below, so a typing burst funds one
+                // merge start instead of one per keystroke.
+                await Task.yield()
                 if Task.isCancelled {
                     return nil
                 }
@@ -953,7 +964,7 @@ package final class HighlightSession {
                 // overlay: feeding stale overlays back in tripped the ObjC
                 // provider's preservation heuristics into keeping shifted
                 // leftovers.
-                let inputTokens = planes.tokens(lineTable: lineTable).filter { !$0.isSemanticOverlay }
+                let inputTokens = planes.baseTokens(lineTable: lineTable)
                 let mergeSource = layeredSource
                 // Safety: single flight gives the pass one writer at a time,
                 // and the root node comes from a private tree snapshot copy.
@@ -969,7 +980,10 @@ package final class HighlightSession {
                 }
                 guard startGeneration == editGeneration else {
                     // An edit landed mid-merge (it also cancelled the merge);
-                    // the result is stale — go around with the new text.
+                    // the result is stale — go around with the new text. Any
+                    // state the merge wrote describes the stale text; drop it
+                    // so planning never shifts a stale index.
+                    semanticPass.invalidate()
                     continue
                 }
                 if merged.isCancelled || Task.isCancelled {
@@ -1012,8 +1026,7 @@ package final class HighlightSession {
             // The line envelope can exceed the popped chunk; drop the overlap so
             // adjacent chunks never reclassify the same lines twice.
             semanticDebt.remove(target)
-            let baseTokens = planes.tokens(in: target, lineTable: lineTable)
-                .filter { !$0.isSemanticOverlay }
+            let baseTokens = planes.baseTokens(in: target, lineTable: lineTable)
             let overlays = semanticPass.overlayTokens(
                 in: target,
                 baseTokens: baseTokens,

@@ -3,7 +3,105 @@ import SyntaxEditorCoreTypes
 import SyntaxEditorLanguageSupport
 import SwiftTreeSitter
 
+/// Outcome of `plannedSemanticUpdate`: either the edit's semantic effects are
+/// bounded to one range, or the conservative full-document merge must run.
+package enum ObjectiveCSemanticUpdatePlan {
+    case bounded(NSRange)
+    case full
+}
+
 package enum ObjectiveCSyntaxOverlayTokenProvider: SyntaxOverlayProvider {
+    /// Edit-local planning over the persisted semantic state (the SemanticPass
+    /// seam). Maintains `state` for the mutation when the edit cannot change
+    /// any declaration the index derives from; every `.full` return discards
+    /// the state so the conservative merge rebuilds it from current text.
+    package static func plannedSemanticUpdate(
+        mutation: SyntaxEditorTextChange.Replacement,
+        envelope: NSRange,
+        source: String,
+        state: inout ObjectiveCSemanticOverlayState?
+    ) -> ObjectiveCSemanticUpdatePlan {
+        let nsSource = source as NSString
+        guard nsSource.length > 0, let previousIndex = state?.index else {
+            state = nil
+            return .full
+        }
+        if objectiveCMutationRequiresSemanticIndexRebuild(
+            mutation,
+            in: nsSource,
+            previousIndex: previousIndex
+        ) {
+            state = nil
+            return .full
+        }
+        // Subsumes the fingerprint comparison: a shiftable signature index is
+        // spliced for the changed lines and compared against the previous
+        // fingerprint; unshiftable or structural-looking edits report true.
+        if objectiveCMutationCanChangeSemanticSignature(
+            mutation,
+            in: nsSource,
+            previousIndex: previousIndex
+        ) {
+            state = nil
+            return .full
+        }
+        guard let shiftedIndex = previousIndex.shifted(by: mutation, source: nsSource) else {
+            state = nil
+            return .full
+        }
+        guard let target = semanticTargetRange(envelope, in: nsSource, mutation: mutation) else {
+            state = nil
+            return .full
+        }
+        state = ObjectiveCSemanticOverlayState(index: shiftedIndex)
+        return .bounded(target)
+    }
+
+    /// Overlay tokens for one bounded target (the planned path). `baseTokens`
+    /// are the base-plane tokens intersecting the target; classification runs
+    /// against the persisted index, exactly like the full merge does for the
+    /// same range. Cancellation is ignored — targets are line-envelope sized
+    /// and the engine checks for cancellation between targets.
+    package static func overlayTokens(
+        in targetRange: NSRange,
+        baseTokens: [SyntaxEditorHighlighting.Token],
+        source: String,
+        state: ObjectiveCSemanticOverlayState?
+    ) -> [SyntaxEditorHighlighting.Token] {
+        guard let index = state?.index else { return [] }
+        let nsSource = source as NSString
+        let target = SyntaxEditorRangeUtilities.clampedRange(targetRange, utf16Length: nsSource.length)
+        guard target.length > 0 else { return [] }
+        let nonCodeRangeIndex = ObjectiveCNonCodeRangeIndex(
+            tokens: baseTokens,
+            sourceLength: nsSource.length
+        )
+        let identifierTokens = semanticTokens(
+            from: baseTokens,
+            source: nsSource,
+            index: index.fileSymbols,
+            targetRange: target,
+            allowsCancellation: false
+        ) ?? []
+        return identifierTokens
+            + objectiveCMacroTokens(
+                in: nsSource,
+                nonCodeRanges: nonCodeRangeIndex.ranges,
+                targetRange: target
+            )
+            + preprocessorStringTokens(in: nsSource, tokens: baseTokens, targetRange: target)
+            + boxedExpressionDelimiterTokens(
+                in: nsSource,
+                nonCodeRanges: nonCodeRangeIndex.ranges,
+                targetRange: target
+            )
+            + boxedBooleanLiteralTokens(
+                in: nsSource,
+                nonCodeRanges: nonCodeRangeIndex.ranges,
+                targetRange: target
+            )
+    }
+
     package static func mergingOverlayTokens(
         tokens: [SyntaxEditorHighlighting.Token],
         source: String,

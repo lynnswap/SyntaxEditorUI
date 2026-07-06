@@ -30,8 +30,10 @@ package struct ObjectiveCLanguage: SyntaxLanguageSupport {
     package func isInsideLiteralOrComment(source: String, location: Int) -> Bool {
         let nsSource = source as NSString
         let clampedLocation = max(0, min(location, nsSource.length))
-        let prefix = nsSource.substring(to: clampedLocation)
-        return PrefixAnalyzer(text: prefix).analysis.isInsideLiteralOrComment
+        var analysis = PrefixAnalysis()
+        var cursor = 0
+        PrefixAnalyzer.advance(&analysis, in: nsSource, cursor: &cursor, limit: clampedLocation)
+        return analysis.isInsideLiteralOrComment
     }
 }
 
@@ -52,17 +54,9 @@ private extension ObjectiveCLanguage {
         }
     }
 
-    struct PrefixAnalyzer {
-        let analysis: PrefixAnalysis
-
-        init(text: String) {
-            let nsText = text as NSString
-            var analysis = PrefixAnalysis()
-            var cursor = 0
-            Self.advance(&analysis, in: nsText, cursor: &cursor, limit: nsText.length)
-            self.analysis = analysis
-        }
-
+    enum PrefixAnalyzer {
+        /// `limit` is treated as the end of the analyzed text: lookahead never
+        /// reads past it, matching what analyzing a prefix substring would see.
         static func advance(
             _ analysis: inout PrefixAnalysis,
             in source: NSString,
@@ -81,7 +75,7 @@ private extension ObjectiveCLanguage {
 
             while cursor < upperBound {
                 let codeUnit = source.character(at: cursor)
-                let nextCodeUnit: unichar? = cursor + 1 < source.length ? source.character(at: cursor + 1) : nil
+                let nextCodeUnit: unichar? = cursor + 1 < upperBound ? source.character(at: cursor + 1) : nil
 
                 if analysis.inLineComment {
                     if codeUnit == newline || codeUnit == carriageReturn {
