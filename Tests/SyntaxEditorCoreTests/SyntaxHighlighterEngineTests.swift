@@ -1567,6 +1567,34 @@ extension SyntaxHighlighterEngineTests {
         }
     }
 
+    @Test("CSSSemanticPass falls back for leaked-tag attribute shaping edits")
+    func cssSemanticPassFallsBackForLeakedTagAttributeEdits() throws {
+        // The edit sits inside a tag the markup guard cannot see (a quoted
+        // '>' precedes it), touches no bracket or quote itself, yet inserting
+        // '=' turns the later quote into an attribute-value opener that can
+        // swallow a downstream region. The quote between the preceding '<'
+        // and the edit must force the conservative merge.
+        let source = """
+        <html>
+        <body>
+        <div data-note="a>b" attrfiller flagname qfiller "quoted value tail"><p>x</p></div>
+        <style>
+        @media screen { .card { color: red; } }
+        </style>
+        </body>
+        </html>
+        """
+        let plan = plannedCSSPlan(
+            source: source,
+            editing: "flagname qfiller",
+            replacement: "flagname= qfiller"
+        )
+        guard case .full = plan else {
+            Issue.record("expected .full, got \(String(describing: plan))")
+            return
+        }
+    }
+
     @Test("CSSSemanticPass falls back for quote and in-region HTML edits")
     func cssSemanticPassFallsBackForQuoteAndRegionEdits() throws {
         let quotePlan = plannedCSSPlan(

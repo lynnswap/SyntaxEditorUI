@@ -402,7 +402,15 @@ package final class CSSSemanticPass: SemanticPass {
               !Self.windowContainsAngleBracket(
                   in: nsNext,
                   around: NSRange(location: mutation.location, length: replacementLength)
-              )
+              ),
+              // The engine's markup-boundary guard misses "inside a tag" only
+              // when a quoted '>' precedes the edit within that tag; there,
+              // even bracket-and-quote-free edits (inserting '=') can change
+              // whether a later quote opens an attribute value and swallow a
+              // downstream region. Such a leak requires a quote between the
+              // nearest preceding '<' and the edit, so a quote-free backward
+              // segment proves the edit sits in plain text.
+              !Self.quoteBetweenPrecedingBracketAndEdit(in: nsPrevious, editLocation: mutation.location)
         else {
             state = nil
             return .full
@@ -456,6 +464,28 @@ package final class CSSSemanticPass: SemanticPass {
 
     /// Longest HTML delimiter the analyzer recognizes ("<![CDATA[").
     private static let delimiterWindow = 9
+
+    private static func quoteBetweenPrecedingBracketAndEdit(
+        in source: NSString,
+        editLocation: Int
+    ) -> Bool {
+        let prefixLength = min(max(0, editLocation), source.length)
+        let open = source.range(
+            of: "<",
+            options: [.backwards],
+            range: NSRange(location: 0, length: prefixLength)
+        )
+        guard open.location != NSNotFound else { return false }
+        var cursor = open.location + 1
+        while cursor < prefixLength {
+            let codeUnit = source.character(at: cursor)
+            if codeUnit == 34 || codeUnit == 39 {
+                return true
+            }
+            cursor += 1
+        }
+        return false
+    }
 
     private static func windowContainsAngleBracket(in source: NSString, around span: NSRange) -> Bool {
         let lower = max(0, span.location - delimiterWindow)
