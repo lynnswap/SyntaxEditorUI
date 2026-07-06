@@ -29,11 +29,13 @@ extension SyntaxEditorView {
             super.contentOffset
         }
         set {
+            retargetWeakTextInteractionPreservation(toAcceptedX: newValue.x)
             super.contentOffset = contentOffsetConstrainedForTextInteraction(newValue)
         }
     }
 
     public override func setContentOffset(_ contentOffset: CGPoint, animated: Bool) {
+        retargetWeakTextInteractionPreservation(toAcceptedX: contentOffset.x)
         super.setContentOffset(
             contentOffsetConstrainedForTextInteraction(contentOffset),
             animated: animated
@@ -57,6 +59,13 @@ extension SyntaxEditorView {
             return
         }
 
+        // UIScrollView routes this through the overridden offset setters via
+        // dynamic dispatch; flag the turn so a weakly preserved offset is not
+        // re-targeted to the interaction's own scroll destination.
+        isPerformingTextInteractionRectScroll = true
+        defer {
+            isPerformingTextInteractionRectScroll = false
+        }
         super.scrollRectToVisible(rect, animated: animated)
         guard !contentOffset.x.isNearlyEqual(to: preservedX) else { return }
         super.setContentOffset(CGPoint(x: preservedX, y: contentOffset.y), animated: false)
@@ -627,6 +636,23 @@ extension SyntaxEditorView {
             self.preservedTextInteractionHorizontalOffset = nil
             self.preservedTextInteractionOffsetSuppressesDirectScrolls = false
         }
+    }
+
+    /// A weakly preserved offset only guards the interaction's
+    /// `scrollRectToVisible`; once a direct scroll is accepted, the guard must
+    /// follow the accepted X or the next rect scroll in the same turn would
+    /// restore the stale offset and undo the explicit scroll.
+    func retargetWeakTextInteractionPreservation(toAcceptedX acceptedX: CGFloat) {
+        guard !isApplyingEditorOwnedScroll,
+              !isPerformingTextInteractionRectScroll,
+              !isTracking,
+              !isDragging,
+              !isDecelerating,
+              !preservedTextInteractionOffsetSuppressesDirectScrolls,
+              preservedTextInteractionHorizontalOffset != nil else {
+            return
+        }
+        preservedTextInteractionHorizontalOffset = acceptedX
     }
 
     func contentOffsetConstrainedForTextInteraction(_ proposedOffset: CGPoint) -> CGPoint {
