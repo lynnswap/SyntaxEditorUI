@@ -579,6 +579,7 @@ extension SyntaxEditorView {
     func performEditorOwnedScroll(_ scroll: () -> Void) {
         textInteractionHorizontalOffsetLockGeneration += 1
         preservedTextInteractionHorizontalOffset = nil
+        preservedTextInteractionOffsetSuppressesDirectScrolls = false
         isApplyingEditorOwnedScroll = true
         defer {
             isApplyingEditorOwnedScroll = false
@@ -595,7 +596,16 @@ extension SyntaxEditorView {
         return work()
     }
 
-    func preserveTextInteractionHorizontalOffsetForCurrentTurn() {
+    /// Arms the interaction-turn horizontal preservation. Selection mutations
+    /// (`suppressesDirectScrolls: true`) pin X against every non-editor scroll
+    /// in the turn — gesture-selection auto-scroll arrives as a plain
+    /// `setContentOffset`. Passive geometry queries (`false`) only guard the
+    /// interaction's `scrollRectToVisible`: UIKit issues them during ordinary
+    /// layout (observed on iOS 27), and a query alone must not swallow an
+    /// explicit scroll command from the embedding app in the same turn.
+    func preserveTextInteractionHorizontalOffsetForCurrentTurn(
+        suppressesDirectScrolls: Bool = false
+    ) {
         guard !lastAppliedLineWrappingEnabled,
               !isIgnoringTextInteractionHorizontalOffsetPreservation else {
             return
@@ -603,6 +613,10 @@ extension SyntaxEditorView {
 
         textInteractionHorizontalOffsetLockGeneration += 1
         let generation = textInteractionHorizontalOffsetLockGeneration
+        // A later weak arm in the same turn must not downgrade a strong one.
+        preservedTextInteractionOffsetSuppressesDirectScrolls = suppressesDirectScrolls
+            || (preservedTextInteractionHorizontalOffset != nil
+                && preservedTextInteractionOffsetSuppressesDirectScrolls)
         preservedTextInteractionHorizontalOffset = contentOffset.x
 
         Task { @MainActor [weak self] in
@@ -611,6 +625,7 @@ extension SyntaxEditorView {
                 return
             }
             self.preservedTextInteractionHorizontalOffset = nil
+            self.preservedTextInteractionOffsetSuppressesDirectScrolls = false
         }
     }
 
@@ -620,6 +635,7 @@ extension SyntaxEditorView {
               !isTracking,
               !isDragging,
               !isDecelerating,
+              preservedTextInteractionOffsetSuppressesDirectScrolls,
               let preservedX = preservedTextInteractionHorizontalOffset else {
             return proposedOffset
         }
