@@ -198,21 +198,21 @@ extension ObjectiveCSyntaxOverlayTokenProvider {
         baseTokens: [SyntaxEditorHighlighting.Token],
         overlayTokens: [SyntaxEditorHighlighting.Token]
     ) -> [SyntaxEditorHighlighting.Token] {
-        let annotatedTokens = baseTokens.map { (token: $0, isOverlay: false) }
-            + overlayTokens.map { (token: $0, isOverlay: true) }
-
-        return annotatedTokens.sorted { lhs, rhs in
-            if lhs.token.range.location != rhs.token.range.location {
-                return lhs.token.range.location < rhs.token.range.location
+        SyntaxHighlightTokenOrdering.mergedSorted(
+            base: baseTokens,
+            overlays: overlayTokens
+        ) { lhs, lhsIsOverlay, rhs, rhsIsOverlay in
+            if lhs.range.location != rhs.range.location {
+                return lhs.range.location < rhs.range.location
             }
-            if lhs.token.range.length != rhs.token.range.length {
-                return lhs.token.range.length > rhs.token.range.length
+            if lhs.range.length != rhs.range.length {
+                return lhs.range.length > rhs.range.length
             }
-            if lhs.isOverlay != rhs.isOverlay {
-                return !lhs.isOverlay && rhs.isOverlay
+            if lhsIsOverlay != rhsIsOverlay {
+                return !lhsIsOverlay
             }
-            return SyntaxHighlightTokenOrdering.displayOrder(lhs.token, rhs.token)
-        }.map(\.token)
+            return SyntaxHighlightTokenOrdering.displayOrder(lhs, rhs)
+        }
     }
 
     static func partialMergedTokens(

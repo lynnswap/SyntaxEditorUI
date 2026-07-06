@@ -52,7 +52,11 @@ package enum CSSSyntaxOverlayTokenProvider {
             canonicalToken(range: $0.range, syntaxID: $0.syntaxID)
         }
 
-        return deduplicated((baseTokens + overlayTokens).sorted(by: SyntaxHighlightTokenOrdering.displayOrder))
+        return deduplicated(
+            SyntaxHighlightTokenOrdering.mergedSorted(base: baseTokens, overlays: overlayTokens) { lhs, _, rhs, _ in
+                SyntaxHighlightTokenOrdering.displayOrder(lhs, rhs)
+            }
+        )
     }
 
     private static func sourceLocalOverlayContext(
