@@ -716,16 +716,17 @@ package final class HighlightSession {
         )
         source = nextSource
         layeredSource = nextLayeredSource
+        let layeredReplacementLength = layeredMutation.replacement.utf16.count
         refreshDebt.splice(
             location: layeredMutation.location,
             oldLength: layeredMutation.length,
-            newLength: layeredMutation.replacement.utf16.count,
+            newLength: layeredReplacementLength,
             documentLength: nextLength
         )
         semanticDebt.splice(
             location: layeredMutation.location,
             oldLength: layeredMutation.length,
-            newLength: layeredMutation.replacement.utf16.count,
+            newLength: layeredReplacementLength,
             documentLength: nextLength
         )
         // Any in-flight off-actor merge is now stale; cancel it so its polls
@@ -740,7 +741,7 @@ package final class HighlightSession {
         let editedExtent = SyntaxEditorRangeUtilities.clampedRange(
             NSRange(
                 location: layeredMutation.location,
-                length: max(1, layeredMutation.replacement.utf16.count + 1)
+                length: max(1, layeredReplacementLength + 1)
             ),
             utf16Length: nextLength
         )
@@ -887,9 +888,10 @@ package final class HighlightSession {
             // repaint duty (base patch included) for the successor.
             refreshDebt.insert(resultRefresh)
         }
-        resultRefresh = SyntaxEditorRangeUtilities.clampedRange(resultRefresh, utf16Length: nextSource.utf16.count)
+        let nextSourceUTF16Length = nextSource.utf16.count
+        resultRefresh = SyntaxEditorRangeUtilities.clampedRange(resultRefresh, utf16Length: nextSourceUTF16Length)
         let normalizedResultRefreshRanges = Self.mergedRanges(resultRefreshRanges.map {
-            SyntaxEditorRangeUtilities.clampedRange($0, utf16Length: nextSource.utf16.count)
+            SyntaxEditorRangeUtilities.clampedRange($0, utf16Length: nextSourceUTF16Length)
         })
         let replacementPayloadTokens = normalizedResultRefreshRanges.flatMap {
             planes.tokens(in: $0, lineTable: lineTable)

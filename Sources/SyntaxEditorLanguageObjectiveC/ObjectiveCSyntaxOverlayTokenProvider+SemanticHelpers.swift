@@ -385,8 +385,8 @@ extension ObjectiveCSyntaxOverlayTokenProvider {
                 cursor = min(nextCursor, upperBound)
                 continue
             }
-            let character = source.substring(with: NSRange(location: cursor, length: 1))
-            guard character == "(" else {
+            let character = source.character(at: cursor)
+            guard character == UInt16(("(" as UnicodeScalar).value) else {
                 cursor += 1
                 continue
             }
@@ -412,8 +412,8 @@ extension ObjectiveCSyntaxOverlayTokenProvider {
                 cursor = min(nextCursor, upperBound)
                 continue
             }
-            let character = source.substring(with: NSRange(location: cursor, length: 1))
-            if character == "@",
+            let character = source.character(at: cursor)
+            if character == UInt16(("@" as UnicodeScalar).value),
                let closeParenRange = unmatchedClosingParenRange(after: cursor + 1, in: source) {
                 return unionRange(targetRange, closeParenRange)
             }
@@ -431,13 +431,15 @@ extension ObjectiveCSyntaxOverlayTokenProvider {
                 continue
             }
 
-            let character = source.substring(with: NSRange(location: cursor, length: 1))
-            if character == ";" || character == "{" || character == "}" {
+            let character = source.character(at: cursor)
+            if character == UInt16((";" as UnicodeScalar).value)
+                || character == UInt16(("{" as UnicodeScalar).value)
+                || character == UInt16(("}" as UnicodeScalar).value) {
                 return nil
             }
-            if character == "(" {
+            if character == UInt16(("(" as UnicodeScalar).value) {
                 depth += 1
-            } else if character == ")" {
+            } else if character == UInt16((")" as UnicodeScalar).value) {
                 if depth == 0 {
                     return NSRange(location: cursor, length: 1)
                 }
@@ -605,11 +607,11 @@ extension ObjectiveCSyntaxOverlayTokenProvider {
         var lower = 0
         var upper = line.length
         while lower < upper,
-              objectiveCLineCharacterIsWhitespace(line.substring(with: NSRange(location: lower, length: 1))) {
+              objectiveCLineCodeUnitIsWhitespace(line.character(at: lower)) {
             lower += 1
         }
         while upper > lower,
-              objectiveCLineCharacterIsWhitespace(line.substring(with: NSRange(location: upper - 1, length: 1))) {
+              objectiveCLineCodeUnitIsWhitespace(line.character(at: upper - 1)) {
             upper -= 1
         }
         guard lower < upper else { return nil }
@@ -699,6 +701,11 @@ extension ObjectiveCSyntaxOverlayTokenProvider {
         text.unicodeScalars.allSatisfy {
             CharacterSet.whitespacesAndNewlines.contains($0)
         }
+    }
+
+    private static func objectiveCLineCodeUnitIsWhitespace(_ codeUnit: unichar) -> Bool {
+        guard let scalar = UnicodeScalar(codeUnit) else { return false }
+        return CharacterSet.whitespacesAndNewlines.contains(scalar)
     }
 
     static func objectiveCMutationRequiresSemanticIndexRebuild(
@@ -849,12 +856,12 @@ extension ObjectiveCSyntaxOverlayTokenProvider {
             }
 
             let operatorRange: NSRange
-            let character = line.substring(with: NSRange(location: cursor, length: 1))
-            if character == "." {
+            let character = line.character(at: cursor)
+            if character == UInt16(("." as UnicodeScalar).value) {
                 operatorRange = NSRange(location: cursor, length: 1)
-            } else if character == "-",
+            } else if character == UInt16(("-" as UnicodeScalar).value),
                       cursor + 1 < line.length,
-                      line.substring(with: NSRange(location: cursor + 1, length: 1)) == ">" {
+                      line.character(at: cursor + 1) == UInt16((">" as UnicodeScalar).value) {
                 operatorRange = NSRange(location: cursor, length: 2)
             } else {
                 cursor += 1
@@ -909,12 +916,12 @@ extension ObjectiveCSyntaxOverlayTokenProvider {
             }
 
             let operatorRange: NSRange
-            let character = line.substring(with: NSRange(location: cursor, length: 1))
-            if character == "." {
+            let character = line.character(at: cursor)
+            if character == UInt16(("." as UnicodeScalar).value) {
                 operatorRange = NSRange(location: cursor, length: 1)
-            } else if character == "-",
+            } else if character == UInt16(("-" as UnicodeScalar).value),
                       cursor + 1 < line.length,
-                      line.substring(with: NSRange(location: cursor + 1, length: 1)) == ">" {
+                      line.character(at: cursor + 1) == UInt16((">" as UnicodeScalar).value) {
                 operatorRange = NSRange(location: cursor, length: 2)
             } else {
                 cursor += 1
