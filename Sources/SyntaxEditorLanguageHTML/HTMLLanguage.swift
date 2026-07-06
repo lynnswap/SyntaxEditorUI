@@ -1926,8 +1926,15 @@ extension HTMLLanguage {
     }
 
     package static func embeddedCSSRawTextRanges(in source: String) -> [NSRange] {
+        rawTextContentRegions(in: source).css
+    }
+
+    /// All raw-text content ranges in document order, with the CSS subset the
+    /// semantic pass scans. One shared analyzer stream feeds the whole walk.
+    package static func rawTextContentRegions(in source: String) -> (all: [NSRange], css: [NSRange]) {
         let nsSource = source as NSString
-        var ranges: [NSRange] = []
+        var all: [NSRange] = []
+        var css: [NSRange] = []
         var cursor = 0
         var analysis = PrefixAnalysis()
         var analysisCursor = 0
@@ -1966,8 +1973,19 @@ extension HTMLLanguage {
                 ) ?? nsSource.length
             }
 
+            // `all` spans from the start tag's `<` through the content end:
+            // start-tag interiors can decide supportedness (the type
+            // attribute) yet slip the engine's markup guard when a quoted
+            // attribute value contains '>', and an insertion between an empty
+            // region's tags becomes region content. Zero-length contents are
+            // kept for the same reason. `css` mirrors the historical scanning
+            // ranges exactly (non-empty content only).
+            all.append(NSRange(
+                location: startTag.range.location,
+                length: contentEnd - startTag.range.location
+            ))
             if embeddedLanguage == .css, contentEnd > contentStart {
-                ranges.append(NSRange(location: contentStart, length: contentEnd - contentStart))
+                css.append(NSRange(location: contentStart, length: contentEnd - contentStart))
             }
             if contentEnd == nsSource.length {
                 break
@@ -1976,6 +1994,6 @@ extension HTMLLanguage {
             cursor = contentEnd + 2
         }
 
-        return ranges
+        return (all, css)
     }
 }

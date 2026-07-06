@@ -1362,3 +1362,259 @@ struct SyntaxHighlighterEngineTests {
         #expect(number.styleKeys.first == "editor.syntax.number")
     }
 }
+
+extension SyntaxHighlighterEngineTests {
+    private static let plannedCSSHTMLSource = """
+    <!doctype html>
+    <html>
+    <head>
+    <style>
+    @media screen { .card { color: red; } }
+    a:hover { color: blue; }
+    </style>
+    <script>
+    const marker = "</scr" + "ipt>";
+    </script>
+    </head>
+    <body>
+    <p>leading filler ReferenceParagraphMarker body text trailing filler</p>
+    </body>
+    </html>
+    """
+
+    private func plannedCSSSettleMatchesFresh(
+        editing target: String,
+        replacement: String,
+        source: String = SyntaxHighlighterEngineTests.plannedCSSHTMLSource,
+        language: SyntaxLanguage = .html
+    ) async -> Bool {
+        let nsSource = source as NSString
+        let targetRange = nsSource.range(of: target)
+        guard targetRange.location != NSNotFound else { return false }
+
+        let engine = SyntaxHighlighterEngine()
+        _ = await engine.reset(source: source, language: language, revision: 0)
+        let next = nsSource.replacingCharacters(in: targetRange, with: replacement)
+        _ = await engine.update(
+            source: next,
+            language: language,
+            mutation: SyntaxEditorTextChange.Replacement(
+                location: targetRange.location,
+                length: targetRange.length,
+                replacement: replacement
+            ),
+            revision: 1
+        )
+
+        let settled = await engine.currentTokensForTesting()
+        let fresh = await SyntaxHighlighterEngine().render(source: next, language: language)
+        return highlightTokensMatch(settled, fresh)
+    }
+
+    @Test("SyntaxHighlighterEngine keeps CSS overlays exact for HTML edits outside raw-text regions")
+    func highlighterKeepsCSSOverlaysExactForHTMLBodyEdits() async throws {
+        // Sanity: the fixture must produce CSS semantic overlays at all.
+        let fresh = await SyntaxHighlighterEngine().render(
+            source: Self.plannedCSSHTMLSource,
+            language: .html
+        )
+        #expect(fresh.contains { $0.isSemanticOverlay && $0.language == .css })
+
+        // Region-outside, quote-free edit: the planned `.reuse` path.
+        #expect(await plannedCSSSettleMatchesFresh(
+            editing: "ReferenceParagraphMarker",
+            replacement: "ReferenceParagraphMarkerEdited"
+        ))
+    }
+
+    @Test("SyntaxHighlighterEngine keeps CSS overlays exact for HTML quote edits")
+    func highlighterKeepsCSSOverlaysExactForHTMLQuoteEdits() async throws {
+        // Quote characters force the conservative merge; the result must
+        // still settle to a fresh highlight.
+        #expect(await plannedCSSSettleMatchesFresh(
+            editing: "body text",
+            replacement: "body's text \"quoted\""
+        ))
+    }
+
+    @Test("SyntaxHighlighterEngine keeps CSS overlays exact for HTML style edits")
+    func highlighterKeepsCSSOverlaysExactForHTMLStyleEdits() async throws {
+        // In-region edit: falls back to the full merge and recolors the rule.
+        #expect(await plannedCSSSettleMatchesFresh(
+            editing: "color: red",
+            replacement: "color: green"
+        ))
+    }
+
+    @Test("SyntaxHighlighterEngine keeps CSS overlays exact for HTML script edits")
+    func highlighterKeepsCSSOverlaysExactForHTMLScriptEdits() async throws {
+        // Script-region edit (can move that region's end): conservative merge.
+        #expect(await plannedCSSSettleMatchesFresh(
+            editing: "const marker",
+            replacement: "const renamedMarker"
+        ))
+    }
+
+    @Test("SyntaxHighlighterEngine keeps pure CSS updates equal to full reset")
+    func highlighterKeepsPureCSSUpdatesEqualToFullReset() async throws {
+        let source = "@media screen { .card { color: red; } }\na:hover { color: blue; }\n"
+        #expect(await plannedCSSSettleMatchesFresh(
+            editing: "color: red",
+            replacement: "color: green",
+            source: source,
+            language: .css
+        ))
+    }
+}
+
+extension SyntaxHighlighterEngineTests {
+    /// Plan-level checks: the CSS pass must reuse for exactly the provable
+    /// class (region-outside, quote-free, no bracket in the delimiter window)
+    /// and fall back everywhere else. The settle-equality tests above cover
+    /// the end-to-end result; these prove the fast path actually engages.
+    private func plannedCSSPlan(
+        source: String,
+        editing target: String,
+        replacement: String
+    ) -> SemanticUpdatePlan? {
+        let nsSource = source as NSString
+        let targetRange = nsSource.range(of: target)
+        guard targetRange.location != NSNotFound else { return nil }
+        // Stub provider: the region layout is derived directly from the
+        // fixture so this tests the plan logic, not the HTML scanner (which
+        // has its own coverage).
+        let pass = CSSSemanticPass(rawTextRegionsProvider: { source in
+            let ns = source as NSString
+            var all: [NSRange] = []
+            var css: [NSRange] = []
+            let styleOpen = ns.range(of: "<style>")
+            let styleClose = ns.range(of: "</style>")
+            if styleOpen.location != NSNotFound, styleClose.location != NSNotFound {
+                all.append(NSRange(
+                    location: styleOpen.location,
+                    length: styleClose.location - styleOpen.location
+                ))
+                css.append(NSRange(
+                    location: styleOpen.upperBound,
+                    length: styleClose.location - styleOpen.upperBound
+                ))
+            }
+            let scriptOpen = ns.range(of: "<script>")
+            let scriptClose = ns.range(of: "</script>")
+            if scriptOpen.location != NSNotFound, scriptClose.location != NSNotFound {
+                all.append(NSRange(
+                    location: scriptOpen.location,
+                    length: scriptClose.location - scriptOpen.location
+                ))
+            }
+            return CSSSemanticPass.RawTextRegions(all: all, css: css)
+        })
+        _ = pass.fullMerge(tokens: [], source: source, rootNode: nil)
+
+        let next = nsSource.replacingCharacters(in: targetRange, with: replacement)
+        let mutation = SyntaxEditorTextChange.Replacement(
+            location: targetRange.location,
+            length: targetRange.length,
+            replacement: replacement
+        )
+        let envelope = (next as NSString).lineRange(
+            for: NSRange(location: targetRange.location, length: replacement.utf16.count)
+        )
+        return pass.plannedUpdate(
+            mutation: mutation,
+            envelope: envelope,
+            source: next,
+            previousSource: source,
+            rootNode: nil
+        )
+    }
+
+    @Test("CSSSemanticPass reuses for region-outside quote-free HTML edits")
+    func cssSemanticPassReusesForRegionOutsideEdits() throws {
+        let plan = plannedCSSPlan(
+            source: Self.plannedCSSHTMLSource,
+            editing: "ReferenceParagraphMarker",
+            replacement: "ReferenceParagraphMarkerEdited"
+        )
+        guard case .reuse = plan else {
+            Issue.record("expected .reuse, got \(String(describing: plan))")
+            return
+        }
+    }
+
+    @Test("CSSSemanticPass falls back for HTML comment delimiter completions")
+    func cssSemanticPassFallsBackForCommentDelimiterCompletions() throws {
+        // Completing '<!--' from '<!-' with a plain hyphen touches no angle
+        // bracket and sits outside every region, yet comments away the later
+        // <style> region — the pre-existing '<' inside the delimiter window
+        // must force the conservative merge.
+        let source = """
+        <html>
+        <body>
+        <p>lead paragraph text</p>
+        <!- pending comment opener
+        <style>
+        @media screen { .card { color: red; } }
+        </style>
+        -->
+        </body>
+        </html>
+        """
+        let plan = plannedCSSPlan(source: source, editing: "!- pending", replacement: "!-- pending")
+        guard case .full = plan else {
+            Issue.record("expected .full, got \(String(describing: plan))")
+            return
+        }
+    }
+
+    @Test("CSSSemanticPass falls back for leaked-tag attribute shaping edits")
+    func cssSemanticPassFallsBackForLeakedTagAttributeEdits() throws {
+        // The edit sits inside a tag the markup guard cannot see (a quoted
+        // '>' precedes it), touches no bracket or quote itself, yet inserting
+        // '=' turns the later quote into an attribute-value opener that can
+        // swallow a downstream region. The quote between the preceding '<'
+        // and the edit must force the conservative merge.
+        let source = """
+        <html>
+        <body>
+        <div data-note="a>b" attrfiller flagname qfiller "quoted value tail"><p>x</p></div>
+        <style>
+        @media screen { .card { color: red; } }
+        </style>
+        </body>
+        </html>
+        """
+        let plan = plannedCSSPlan(
+            source: source,
+            editing: "flagname qfiller",
+            replacement: "flagname= qfiller"
+        )
+        guard case .full = plan else {
+            Issue.record("expected .full, got \(String(describing: plan))")
+            return
+        }
+    }
+
+    @Test("CSSSemanticPass falls back for quote and in-region HTML edits")
+    func cssSemanticPassFallsBackForQuoteAndRegionEdits() throws {
+        let quotePlan = plannedCSSPlan(
+            source: Self.plannedCSSHTMLSource,
+            editing: "body text",
+            replacement: "body's text"
+        )
+        guard case .full = quotePlan else {
+            Issue.record("expected .full for quote edit, got \(String(describing: quotePlan))")
+            return
+        }
+
+        let stylePlan = plannedCSSPlan(
+            source: Self.plannedCSSHTMLSource,
+            editing: "color: red",
+            replacement: "color: green"
+        )
+        guard case .full = stylePlan else {
+            Issue.record("expected .full for style edit, got \(String(describing: stylePlan))")
+            return
+        }
+    }
+}

@@ -794,6 +794,7 @@ package final class HighlightSession {
                 mutation: layeredMutation,
                 envelope: planEnvelope,
                 source: nextLayeredSource,
+                previousSource: previousLayeredSource,
                 rootNode: rootNode
             ) {
                 switch plan {
