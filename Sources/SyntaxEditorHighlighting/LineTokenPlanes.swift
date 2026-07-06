@@ -935,6 +935,72 @@ package final class LineTokenPlanes {
         return tokens
     }
 
+    /// Base-plane-only variant of `tokens(in:)` for semantic merge input:
+    /// same continuation joining and display ordering, but no overlay join
+    /// and no cross-plane dedup (a single plane cannot produce the
+    /// cross-plane duplicates the dedup exists for). Halves the
+    /// document-sized input build the monolithic semantic passes pay.
+    package func baseTokens(
+        in range: NSRange? = nil,
+        lineTable: HighlightLineTable
+    ) -> [SyntaxEditorHighlighting.Token] {
+        guard !lines.isEmpty else { return [] }
+        let lineRange: Range<Int>
+        if let range {
+            lineRange = lineTable.lineRange(containingUTF16Range: range)
+        } else {
+            lineRange = 0..<lines.count
+        }
+        let lower = min(max(0, lineRange.lowerBound), lines.count)
+        var upper = min(max(lower, lineRange.upperBound), lines.count)
+        guard lower < upper else { return [] }
+
+        var start = lower
+        while start > 0, crossesBoundary(above: start) {
+            start -= 1
+        }
+        while upper < lines.count, crossesBoundary(above: upper) {
+            upper += 1
+        }
+
+        var results: [(range: NSRange, styleID: UInt16)] = []
+        var openBase: [(start: Int, end: Int, styleID: UInt16)] = []
+        for line in start..<upper {
+            joinPlane(
+                segments: lines[line].base,
+                lineStart: lineTable.lineStartOffset(at: line),
+                open: &openBase,
+                results: &results
+            )
+        }
+        for token in openBase {
+            results.append((NSRange(location: token.start, length: token.end - token.start), token.styleID))
+        }
+
+        results.sort { lhs, rhs in
+            if lhs.range.location != rhs.range.location {
+                return lhs.range.location < rhs.range.location
+            }
+            if lhs.range.length != rhs.range.length {
+                return lhs.range.length > rhs.range.length
+            }
+            return styles.displayOrder(of: lhs.styleID, before: rhs.styleID)
+        }
+        var tokens: [SyntaxEditorHighlighting.Token] = []
+        tokens.reserveCapacity(results.count)
+        for entry in results {
+            let style = styles[entry.styleID]
+            tokens.append(SyntaxEditorHighlighting.Token(
+                range: entry.range,
+                syntaxID: style.syntaxID,
+                language: style.language,
+                rawCaptureName: style.rawCaptureName,
+                isSemanticOverlay: style.isSemanticOverlay
+            ))
+        }
+        return tokens
+    }
+
     private struct DedupKey: Hashable {
         let location: Int
         let length: Int

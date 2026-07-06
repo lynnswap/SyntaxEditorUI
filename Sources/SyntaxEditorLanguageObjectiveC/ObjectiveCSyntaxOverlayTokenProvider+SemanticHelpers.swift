@@ -11,7 +11,8 @@ extension ObjectiveCSyntaxOverlayTokenProvider {
         from tokens: [SyntaxEditorHighlighting.Token],
         source: NSString,
         index: ObjectiveCFileSymbolIndex,
-        targetRange: NSRange?
+        targetRange: NSRange?,
+        allowsCancellation: Bool = true
     ) -> [SyntaxEditorHighlighting.Token]? {
         var overlayTokens: [SyntaxEditorHighlighting.Token] = []
         overlayTokens.reserveCapacity(tokens.count / 4)
@@ -19,7 +20,7 @@ extension ObjectiveCSyntaxOverlayTokenProvider {
         var cancellationBudget = 0
         for token in tokens {
             cancellationBudget += 1
-            if cancellationBudget & 0x3FF == 0, Task.isCancelled {
+            if allowsCancellation, cancellationBudget & 0x3FF == 0, Task.isCancelled {
                 return nil
             }
             guard token.language == .objectiveC || token.language == nil,

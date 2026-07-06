@@ -100,7 +100,7 @@ package enum SemanticPassFactory {
         case .swift:
             return SwiftSemanticPass()
         case .objectiveC:
-            return ObjectiveCConservativeSemanticPass()
+            return ObjectiveCSemanticPass()
         case .css:
             return CSSSemanticPass(scanningRangesProvider: nil)
         case .html:
@@ -226,8 +226,13 @@ final class SwiftSemanticPass: SemanticPass {
     }
 }
 
-/// Objective-C conservative pass: same shape over the ObjC provider.
-final class ObjectiveCConservativeSemanticPass: SemanticPass {
+/// Objective-C pass: `plannedUpdate` bounds in-body edits via the provider's
+/// shifted semantic index; anything declaration-shaped falls back to the
+/// conservative full-document merge. `supportsChunkedFullPass` stays false —
+/// the position-keyed classification runs its document pass as one detached
+/// merge, so the engine must not plan against this pass while that merge is
+/// in flight (its detached task writes the shared state on completion).
+final class ObjectiveCSemanticPass: SemanticPass {
     private var state: ObjectiveCSemanticOverlayState?
 
     func fullMerge(
@@ -243,6 +248,38 @@ final class ObjectiveCConservativeSemanticPass: SemanticPass {
             state: &state
         )
         return (result.tokens, result.isCancelled)
+    }
+
+    func plannedUpdate(
+        mutation: SyntaxEditorTextChange.Replacement,
+        envelope: NSRange,
+        source: String,
+        rootNode: Node?
+    ) -> SemanticUpdatePlan? {
+        switch ObjectiveCSyntaxOverlayTokenProvider.plannedSemanticUpdate(
+            mutation: mutation,
+            envelope: envelope,
+            source: source,
+            state: &state
+        ) {
+        case .bounded(let target):
+            return .targets([target])
+        case .full:
+            return .full
+        }
+    }
+
+    func overlayTokens(
+        in targetRange: NSRange,
+        baseTokens: [SyntaxEditorHighlighting.Token],
+        source: String
+    ) -> [SyntaxEditorHighlighting.Token] {
+        ObjectiveCSyntaxOverlayTokenProvider.overlayTokens(
+            in: targetRange,
+            baseTokens: baseTokens,
+            source: source,
+            state: state
+        )
     }
 
     func invalidate() {
