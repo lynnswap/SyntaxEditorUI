@@ -103,8 +103,26 @@ package struct PendingHighlightEditMap {
         }
     }
 
+    /// Memoized results of the per-query edit-chain folds, keyed by the queried
+    /// range. Misses run the exact original reduce+flatMap fold, so cached and
+    /// uncached queries are semantics-equal by construction. The box is shared
+    /// between value copies with identical `edits` (store and per-query
+    /// resolvers); every mutation replaces it with a fresh instance, so a stale
+    /// box can only be reached through a copy that still holds the matching
+    /// old chain.
+    private final class MappingCache {
+        var currentRangesBySnapshotRange: [NSRange: [NSRange]] = [:]
+        var snapshotRangesByCurrentRange: [NSRange: [NSRange]] = [:]
+    }
+
+    /// Bounds each memo dictionary while the chain stays unchanged (e.g. long
+    /// scrolls with pending edits); on overflow the dictionary is reset, which
+    /// only costs recomputation.
+    private static let mappingCacheEntryLimit = 1024
+
     private var edits: [Edit] = []
     private var dirtyRanges: [NSRange] = []
+    private var mappingCache = MappingCache()
     package private(set) var currentTextLength: Int?
 
     package init() {}
@@ -148,29 +166,49 @@ package struct PendingHighlightEditMap {
         }
 
         appendEdit(edit)
+        mappingCache = MappingCache()
         self.currentTextLength = currentTextLength
     }
 
     package mutating func clear() {
         edits = []
         dirtyRanges = []
+        mappingCache = MappingCache()
         currentTextLength = nil
     }
 
     package func currentRanges(forSnapshotRange range: NSRange) -> [NSRange] {
-        edits.reduce([range]) { ranges, edit in
+        guard !edits.isEmpty else { return [range] }
+        if let cached = mappingCache.currentRangesBySnapshotRange[range] {
+            return cached
+        }
+        let mapped = edits.reduce([range]) { ranges, edit in
             ranges.flatMap {
                 Self.currentRanges(forSnapshotRange: $0, applying: edit)
             }
         }
+        if mappingCache.currentRangesBySnapshotRange.count >= Self.mappingCacheEntryLimit {
+            mappingCache.currentRangesBySnapshotRange.removeAll(keepingCapacity: true)
+        }
+        mappingCache.currentRangesBySnapshotRange[range] = mapped
+        return mapped
     }
 
     package func snapshotRanges(forCurrentRange range: NSRange) -> [NSRange] {
-        edits.reversed().reduce([range]) { ranges, edit in
+        guard !edits.isEmpty else { return [range] }
+        if let cached = mappingCache.snapshotRangesByCurrentRange[range] {
+            return cached
+        }
+        let mapped = edits.reversed().reduce([range]) { ranges, edit in
             ranges.flatMap {
                 Self.snapshotRanges(forCurrentRange: $0, reverting: edit)
             }
         }
+        if mappingCache.snapshotRangesByCurrentRange.count >= Self.mappingCacheEntryLimit {
+            mappingCache.snapshotRangesByCurrentRange.removeAll(keepingCapacity: true)
+        }
+        mappingCache.snapshotRangesByCurrentRange[range] = mapped
+        return mapped
     }
 
     private static func dirtyRange(for edit: Edit) -> NSRange? {
@@ -274,29 +312,34 @@ package struct HighlightVisibleRunResolver {
     private let pendingEditMap: PendingHighlightEditMap
     private let currentTextLength: Int
     private let currentSuppressionRanges: [NSRange]
-    private let checkpointDirtyRanges: [NSRange]
     private let currentColorRuns: [HighlightColorRun]
     private let currentFontRuns: [HighlightFontRun]
-    private let currentMaterializedRanges: [NSRange]
+    private let colorSuppressedRanges: [NSRange]
+    private let fontSuppressedRanges: [NSRange]
 
+    /// `colorSuppressedRanges` / `fontSuppressedRanges` are the normalized
+    /// unions of every range where snapshot-mapped color/font runs must not
+    /// render (pending dirty + checkpoint dirty [+ suppression, color only]
+    /// + materialized ranges). `HighlightRenderSnapshotStore` owns computing
+    /// and caching them.
     package init(
         snapshot: HighlightRenderSnapshot,
         pendingEditMap: PendingHighlightEditMap,
         currentTextLength: Int,
         currentSuppressionRanges: [NSRange],
-        checkpointDirtyRanges: [NSRange],
         currentColorRuns: [HighlightColorRun],
         currentFontRuns: [HighlightFontRun],
-        currentMaterializedRanges: [NSRange]
+        colorSuppressedRanges: [NSRange],
+        fontSuppressedRanges: [NSRange]
     ) {
         self.snapshot = snapshot
         self.pendingEditMap = pendingEditMap
         self.currentTextLength = max(0, currentTextLength)
         self.currentSuppressionRanges = currentSuppressionRanges
-        self.checkpointDirtyRanges = checkpointDirtyRanges
         self.currentColorRuns = currentColorRuns
         self.currentFontRuns = currentFontRuns
-        self.currentMaterializedRanges = currentMaterializedRanges
+        self.colorSuppressedRanges = colorSuppressedRanges
+        self.fontSuppressedRanges = fontSuppressedRanges
     }
 
     package func forEachColorRun(
@@ -413,11 +456,7 @@ package struct HighlightVisibleRunResolver {
         let clamped = SyntaxEditorRangeUtilities.clampedRange(currentRange, utf16Length: currentTextLength)
         guard clamped.length > 0 else { return }
 
-        let suppressedRanges = HighlightRunUtilities.normalizedRanges(
-            pendingEditMap.visibleDirtyRanges + checkpointDirtyRanges + currentSuppressionRanges + currentMaterializedRanges,
-            textLength: currentTextLength
-        )
-        for visibleRange in HighlightRunUtilities.rangesBySubtracting(suppressedRanges, from: clamped) {
+        for visibleRange in HighlightRunUtilities.rangesBySubtracting(colorSuppressedRanges, from: clamped) {
             body(visibleRange)
         }
     }
@@ -429,11 +468,7 @@ package struct HighlightVisibleRunResolver {
         let clamped = SyntaxEditorRangeUtilities.clampedRange(currentRange, utf16Length: currentTextLength)
         guard clamped.length > 0 else { return }
 
-        let suppressedRanges = HighlightRunUtilities.normalizedRanges(
-            pendingEditMap.visibleDirtyRanges + checkpointDirtyRanges + currentMaterializedRanges,
-            textLength: currentTextLength
-        )
-        for visibleRange in HighlightRunUtilities.rangesBySubtracting(suppressedRanges, from: clamped) {
+        for visibleRange in HighlightRunUtilities.rangesBySubtracting(fontSuppressedRanges, from: clamped) {
             body(visibleRange)
         }
     }
@@ -503,13 +538,63 @@ package final class HighlightRenderSnapshotStore {
     package var epoch: Int { generation }
     package private(set) var snapshot: HighlightRenderSnapshot = .empty
 
-    private var pendingEditMap = PendingHighlightEditMap()
-    private var currentTextLength = 0
-    private var currentSuppressionRanges: [NSRange] = []
-    private var checkpointDirtyRanges: [NSRange] = []
+    private var pendingEditMap = PendingHighlightEditMap() {
+        didSet { invalidateSuppressedRangeCaches() }
+    }
+    private var currentTextLength = 0 {
+        didSet { invalidateSuppressedRangeCaches() }
+    }
+    private var currentSuppressionRanges: [NSRange] = [] {
+        didSet { invalidateSuppressedRangeCaches() }
+    }
+    private var checkpointDirtyRanges: [NSRange] = [] {
+        didSet { invalidateSuppressedRangeCaches() }
+    }
     private var currentColorRuns: [HighlightColorRun] = []
     private var currentFontRuns: [HighlightFontRun] = []
-    private var currentMaterializedRanges: [NSRange] = []
+    private var currentMaterializedRanges: [NSRange] = [] {
+        didSet { invalidateSuppressedRangeCaches() }
+    }
+
+    /// Cached normalized unions of the ranges where snapshot-mapped runs must
+    /// not render, rebuilt lazily on query. The `didSet` observers on every
+    /// input property (`pendingEditMap`, `currentTextLength`,
+    /// `currentSuppressionRanges`, `checkpointDirtyRanges`,
+    /// `currentMaterializedRanges`) own invalidation, so no mutation path —
+    /// present or future — can leak a stale union. `currentTextLength` is an
+    /// input because normalization clamps against it, and it can change
+    /// without a `generation` bump (`updateSuppressionRanges` early return).
+    private var cachedColorSuppressedRanges: [NSRange]?
+    private var cachedFontSuppressedRanges: [NSRange]?
+
+    private func invalidateSuppressedRangeCaches() {
+        cachedColorSuppressedRanges = nil
+        cachedFontSuppressedRanges = nil
+    }
+
+    private var colorSuppressedRanges: [NSRange] {
+        if let cachedColorSuppressedRanges {
+            return cachedColorSuppressedRanges
+        }
+        let ranges = HighlightRunUtilities.normalizedRanges(
+            pendingEditMap.visibleDirtyRanges + checkpointDirtyRanges + currentSuppressionRanges + currentMaterializedRanges,
+            textLength: currentTextLength
+        )
+        cachedColorSuppressedRanges = ranges
+        return ranges
+    }
+
+    private var fontSuppressedRanges: [NSRange] {
+        if let cachedFontSuppressedRanges {
+            return cachedFontSuppressedRanges
+        }
+        let ranges = HighlightRunUtilities.normalizedRanges(
+            pendingEditMap.visibleDirtyRanges + checkpointDirtyRanges + currentMaterializedRanges,
+            textLength: currentTextLength
+        )
+        cachedFontSuppressedRanges = ranges
+        return ranges
+    }
 
     package var baseForeground: SyntaxEditorTheme.Color? {
         snapshot.baseForeground
@@ -1072,10 +1157,10 @@ package final class HighlightRenderSnapshotStore {
             pendingEditMap: pendingEditMap,
             currentTextLength: currentTextLength,
             currentSuppressionRanges: currentSuppressionRanges,
-            checkpointDirtyRanges: checkpointDirtyRanges,
             currentColorRuns: currentColorRuns,
             currentFontRuns: currentFontRuns,
-            currentMaterializedRanges: currentMaterializedRanges
+            colorSuppressedRanges: colorSuppressedRanges,
+            fontSuppressedRanges: fontSuppressedRanges
         )
     }
 }
