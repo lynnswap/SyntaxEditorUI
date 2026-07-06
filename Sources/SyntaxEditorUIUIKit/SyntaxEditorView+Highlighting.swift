@@ -543,7 +543,9 @@ extension SyntaxEditorView {
             visibleRange: visibleRange
         )
         let shouldYieldBeforeReplacingRequest = !source.isEmpty
-        highlightTask = Task.detached(priority: .utility) { [
+        // The user is actively waiting on this pipeline (it recolors the text
+        // just typed); .utility let loaded hosts starve it for long stretches.
+        highlightTask = Task.detached(priority: .userInitiated) { [
             weak self,
             highlighter,
             request,
