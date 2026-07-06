@@ -241,14 +241,129 @@ package enum SyntacticPatcher {
         let changedText = (previousSource as NSString).substring(
             with: NSRange(location: mutation.location, length: mutation.length)
         )
+        let replacementLength = mutation.replacement.utf16.count
         return changedText.contains("<") ||
             changedText.contains(">") ||
             mutation.replacement.contains("<") ||
             mutation.replacement.contains(">") ||
+            markupDelimiterOccurrencesChanged(
+                mutation: mutation,
+                replacementLength: replacementLength,
+                previousSource: previousSource,
+                nextSource: nextSource
+            ) ||
             isInsideMarkupTag(in: previousSource, at: mutation.location) ||
             isInsideMarkupTag(in: previousSource, at: mutation.location + mutation.length) ||
             isInsideMarkupTag(in: nextSource, at: mutation.location) ||
-            isInsideMarkupTag(in: nextSource, at: mutation.location + mutation.replacement.utf16.count)
+            isInsideMarkupTag(in: nextSource, at: mutation.location + replacementLength)
+    }
+
+    private struct MarkupDelimiterOccurrence: Hashable {
+        let delimiter: String
+        let location: Int
+    }
+
+    /// Longest delimiter that can alter HTML sublayer/comment structure
+    /// without the edit itself touching '<' or '>'.
+    private static let markupDelimiterWindow = 9
+
+    private static let markupDelimiters = [
+        "<!--",
+        "-->",
+        "<![CDATA[",
+        "]]>"
+    ]
+
+    private static func markupDelimiterOccurrencesChanged(
+        mutation: SyntaxEditorTextChange.Replacement,
+        replacementLength: Int,
+        previousSource: String,
+        nextSource: String
+    ) -> Bool {
+        let previous = previousSource as NSString
+        let next = nextSource as NSString
+        let previousSpan = NSRange(location: mutation.location, length: mutation.length)
+        let nextSpan = NSRange(location: mutation.location, length: replacementLength)
+        let delta = replacementLength - mutation.length
+        let previousOccurrences = markupDelimiterOccurrences(
+            in: previous,
+            around: previousSpan,
+            normalizingPreviousMutation: mutation,
+            delta: delta
+        )
+        let nextOccurrences = markupDelimiterOccurrences(
+            in: next,
+            around: nextSpan,
+            normalizingPreviousMutation: nil,
+            delta: 0
+        )
+        return previousOccurrences != nextOccurrences
+    }
+
+    private static func markupDelimiterOccurrences(
+        in source: NSString,
+        around span: NSRange,
+        normalizingPreviousMutation mutation: SyntaxEditorTextChange.Replacement?,
+        delta: Int
+    ) -> Set<MarkupDelimiterOccurrence> {
+        let lower = max(0, min(source.length, span.location) - markupDelimiterWindow)
+        let upper = min(source.length, max(0, span.upperBound) + markupDelimiterWindow)
+        guard lower < upper else {
+            return []
+        }
+
+        let searchLower = max(0, lower - markupDelimiterWindow + 1)
+        let searchUpper = min(source.length, upper + markupDelimiterWindow - 1)
+        var occurrences: Set<MarkupDelimiterOccurrence> = []
+        for delimiter in markupDelimiters {
+            var cursor = searchLower
+            while cursor < searchUpper {
+                let searchRange = NSRange(location: cursor, length: searchUpper - cursor)
+                let found = source.range(of: delimiter, options: [], range: searchRange)
+                guard found.location != NSNotFound else {
+                    break
+                }
+                guard found.location < upper else {
+                    break
+                }
+                guard found.upperBound > lower else {
+                    cursor = found.location + 1
+                    continue
+                }
+
+                let location: Int
+                if let mutation {
+                    location = normalizedPreviousDelimiterLocation(
+                        found,
+                        mutation: mutation,
+                        delta: delta
+                    )
+                } else {
+                    location = found.location
+                }
+                occurrences.insert(MarkupDelimiterOccurrence(
+                    delimiter: delimiter,
+                    location: location
+                ))
+                cursor = found.location + 1
+            }
+        }
+        return occurrences
+    }
+
+    private static func normalizedPreviousDelimiterLocation(
+        _ range: NSRange,
+        mutation: SyntaxEditorTextChange.Replacement,
+        delta: Int
+    ) -> Int {
+        if range.upperBound <= mutation.location {
+            return range.location
+        }
+        let oldEnd = mutation.location + mutation.length
+        if range.location >= oldEnd {
+            return range.location + delta
+        }
+        return range.location
     }
 
     static func isInsideMarkupTag(in source: String, at utf16Offset: Int) -> Bool {

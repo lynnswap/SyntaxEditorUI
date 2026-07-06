@@ -310,6 +310,75 @@ struct SyntaxHighlighterEngineTests {
         #expect(highlightTokensMatch(settled, fresh))
     }
 
+    @Test("SyntaxHighlighterEngine settles comment-delimiter completions to a fresh render")
+    func highlighterSettlesCommentDelimiterCompletionsToFreshRender() async throws {
+        let source = """
+        <html>
+        <body>
+        <p>lead paragraph text</p>
+        <!- pending comment opener
+        <style>
+        @media screen { .card { color: red; } }
+        </style>
+        -->
+        </body>
+        </html>
+        """
+        let nsSource = source as NSString
+        let targetRange = nsSource.range(of: "!- pending")
+        let engine = SyntaxHighlighterEngine()
+        _ = await engine.reset(source: source, language: .html, revision: 0)
+        let next = nsSource.replacingCharacters(in: targetRange, with: "!-- pending")
+        let result = await engine.update(
+            source: next,
+            language: .html,
+            mutation: SyntaxEditorTextChange.Replacement(
+                location: targetRange.location,
+                length: targetRange.length,
+                replacement: "!-- pending"
+            ),
+            revision: 1
+        )
+        #expect(result.tokenPayload == .fullSnapshot)
+        let settled = await engine.currentTokensForTesting()
+        let fresh = await SyntaxHighlighterEngine().render(source: next, language: .html)
+        #expect(highlightTokensMatch(settled, fresh))
+    }
+
+    @Test("SyntaxHighlighterEngine keeps tag-adjacent text edits incremental")
+    func highlighterKeepsTagAdjacentTextEditsIncremental() async throws {
+        let source = """
+        <html>
+        <body>
+        <p>lead paragraph text</p>
+        <style>
+        @media screen { .card { color: red; } }
+        </style>
+        </body>
+        </html>
+        """
+        let nsSource = source as NSString
+        let targetRange = nsSource.range(of: "</p>")
+        let engine = SyntaxHighlighterEngine()
+        _ = await engine.reset(source: source, language: .html, revision: 0)
+        let next = nsSource.replacingCharacters(
+            in: NSRange(location: targetRange.location, length: 0),
+            with: " edited"
+        )
+        let result = await engine.update(
+            source: next,
+            language: .html,
+            mutation: SyntaxEditorTextChange.Replacement(
+                location: targetRange.location,
+                length: 0,
+                replacement: " edited"
+            ),
+            revision: 1
+        )
+        #expect(result.tokenPayload == .replacement)
+        #expect(refreshRangeUnion(result).length < 200)
+    }
+
     @Test("SyntaxHighlighterEngine progressive reset never labels partial paints as full snapshots")
     func highlighterProgressiveResetEmitsPartialPaintsAsReplacements() async throws {
         let unit = try referenceSampleText(named: "Reference.swift")
