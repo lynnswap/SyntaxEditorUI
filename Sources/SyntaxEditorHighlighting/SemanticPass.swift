@@ -30,10 +30,13 @@ package protocol SemanticPass: AnyObject {
     /// Edit-local planning: validate/maintain the language's semantic state for
     /// the committed edit and bound the reclassification targets. nil means the
     /// pass has no incremental support (the engine runs `fullMerge`).
+    /// `previousSource` is the pre-edit text (`mutation` is in its
+    /// coordinates); passes that classify removed text need it.
     func plannedUpdate(
         mutation: SyntaxEditorTextChange.Replacement,
         envelope: NSRange,
         source: String,
+        previousSource: String,
         rootNode: Node?
     ) -> SemanticUpdatePlan?
 
@@ -74,6 +77,7 @@ package extension SemanticPass {
         mutation: SyntaxEditorTextChange.Replacement,
         envelope: NSRange,
         source: String,
+        previousSource: String,
         rootNode: Node?
     ) -> SemanticUpdatePlan? {
         nil
@@ -102,10 +106,11 @@ package enum SemanticPassFactory {
         case .objectiveC:
             return ObjectiveCSemanticPass()
         case .css:
-            return CSSSemanticPass(scanningRangesProvider: nil)
+            return CSSSemanticPass(rawTextRegionsProvider: nil)
         case .html:
-            return CSSSemanticPass(scanningRangesProvider: { source in
-                HTMLLanguage.embeddedCSSRawTextRanges(in: source)
+            return CSSSemanticPass(rawTextRegionsProvider: { source in
+                let regions = HTMLLanguage.rawTextContentRegions(in: source)
+                return CSSSemanticPass.RawTextRegions(all: regions.all, css: regions.css)
             })
         default:
             return nil
@@ -142,6 +147,7 @@ final class SwiftSemanticPass: SemanticPass {
         mutation: SyntaxEditorTextChange.Replacement,
         envelope: NSRange,
         source: String,
+        previousSource: String,
         rootNode: Node?
     ) -> SemanticUpdatePlan? {
         // Every .full return discards state: a failed in-place shift leaves the
@@ -254,6 +260,7 @@ final class ObjectiveCSemanticPass: SemanticPass {
         mutation: SyntaxEditorTextChange.Replacement,
         envelope: NSRange,
         source: String,
+        previousSource: String,
         rootNode: Node?
     ) -> SemanticUpdatePlan? {
         switch ObjectiveCSyntaxOverlayTokenProvider.plannedSemanticUpdate(
@@ -289,11 +296,34 @@ final class ObjectiveCSemanticPass: SemanticPass {
 
 /// CSS (and CSS-in-HTML) pass: the provider is pure and stateless; for HTML the
 /// scanning ranges are the embedded `<style>` contents of the masked source.
+///
+/// `plannedUpdate` covers one exactly-provable case: an edit strictly outside
+/// every raw-text region that neither adds nor removes quote characters.
+/// Every input of the CSS overlay synthesis is region-scoped (the scanners are
+/// clipped to the scanning ranges, keyword suppression reads css-language base
+/// tokens which only exist inside them), and with `<`/`>` already excluded by
+/// the engine's markup-boundary reset and quotes excluded here, no HTML
+/// analyzer state downstream of the edit can change ('>' cannot occur in
+/// unquoted attribute values, so quote parity is the only remaining ripple).
+/// The overlay set is therefore shift-only, which the token planes already
+/// performed — the plan is `.reuse`. Everything else stays the conservative
+/// full merge.
 final class CSSSemanticPass: SemanticPass {
-    private let scanningRangesProvider: ((String) -> [NSRange])?
+    struct RawTextRegions {
+        let all: [NSRange]
+        let css: [NSRange]
+    }
 
-    init(scanningRangesProvider: ((String) -> [NSRange])?) {
-        self.scanningRangesProvider = scanningRangesProvider
+    private struct State {
+        var regions: RawTextRegions
+        var sourceUTF16Length: Int
+    }
+
+    private let rawTextRegionsProvider: ((String) -> RawTextRegions)?
+    private var state: State?
+
+    init(rawTextRegionsProvider: ((String) -> RawTextRegions)?) {
+        self.rawTextRegionsProvider = rawTextRegionsProvider
     }
 
     func fullMerge(
@@ -301,12 +331,14 @@ final class CSSSemanticPass: SemanticPass {
         source: String,
         rootNode: Node?
     ) -> (tokens: [SyntaxEditorHighlighting.Token], isCancelled: Bool) {
-        if let scanningRangesProvider {
+        if let rawTextRegionsProvider {
+            let regions = rawTextRegionsProvider(source)
+            state = State(regions: regions, sourceUTF16Length: (source as NSString).length)
             return (
                 CSSSyntaxOverlayTokenProvider.mergingOverlayTokens(
                     tokens: tokens,
                     source: source,
-                    scanningRanges: scanningRangesProvider(source)
+                    scanningRanges: regions.css
                 ),
                 false
             )
@@ -317,5 +349,108 @@ final class CSSSemanticPass: SemanticPass {
         )
     }
 
-    func invalidate() {}
+    func plannedUpdate(
+        mutation: SyntaxEditorTextChange.Replacement,
+        envelope: NSRange,
+        source: String,
+        previousSource: String,
+        rootNode: Node?
+    ) -> SemanticUpdatePlan? {
+        guard rawTextRegionsProvider != nil else {
+            // Pure CSS documents scan the whole text; no boundable case yet.
+            return .full
+        }
+        guard let previousState = state else {
+            state = nil
+            return .full
+        }
+        let nsPrevious = previousSource as NSString
+        let nsNext = source as NSString
+        let replacementLength = mutation.replacement.utf16.count
+        guard previousState.sourceUTF16Length == nsPrevious.length,
+              mutation.location >= 0,
+              mutation.length >= 0,
+              mutation.location + mutation.length <= nsPrevious.length,
+              nsNext.length == nsPrevious.length - mutation.length + replacementLength
+        else {
+            state = nil
+            return .full
+        }
+
+        // Quote characters toggle the only analyzer state that can leak past
+        // the engine's markup-boundary guard (quoted attribute values may
+        // contain '>'); adding or removing one can move region boundaries
+        // far from the edit.
+        let removedText = nsPrevious.substring(
+            with: NSRange(location: mutation.location, length: mutation.length)
+        )
+        guard !Self.containsQuote(removedText), !Self.containsQuote(mutation.replacement) else {
+            state = nil
+            return .full
+        }
+
+        // The edit must sit strictly outside every raw-text content range
+        // (touching an endpoint grows that region's content), and the
+        // reclassified envelope must not clear overlays inside a CSS range.
+        let editSpan = NSRange(location: mutation.location, length: mutation.length)
+        guard !previousState.regions.all.contains(where: { Self.touches($0, editSpan) }) else {
+            state = nil
+            return .full
+        }
+        let delta = replacementLength - mutation.length
+        guard let shiftedAll = Self.shifted(previousState.regions.all, after: editSpan, by: delta),
+              let shiftedCSS = Self.shifted(previousState.regions.css, after: editSpan, by: delta)
+        else {
+            state = nil
+            return .full
+        }
+        guard !shiftedCSS.contains(where: { Self.touches($0, envelope) }) else {
+            state = nil
+            return .full
+        }
+
+        state = State(
+            regions: RawTextRegions(all: shiftedAll, css: shiftedCSS),
+            sourceUTF16Length: nsNext.length
+        )
+        return .reuse
+    }
+
+    /// Only reached on the `.reuse` path, whose plan guarantees the envelope
+    /// is disjoint from every CSS scanning range — there are no overlays to
+    /// produce (or clear) there.
+    func overlayTokens(
+        in targetRange: NSRange,
+        baseTokens: [SyntaxEditorHighlighting.Token],
+        source: String
+    ) -> [SyntaxEditorHighlighting.Token] {
+        []
+    }
+
+    func invalidate() {
+        state = nil
+    }
+
+    private static func containsQuote(_ text: String) -> Bool {
+        text.utf16.contains { $0 == 34 || $0 == 39 }
+    }
+
+    private static func touches(_ range: NSRange, _ span: NSRange) -> Bool {
+        span.location <= range.upperBound && span.upperBound >= range.location
+    }
+
+    private static func shifted(_ ranges: [NSRange], after editSpan: NSRange, by delta: Int) -> [NSRange]? {
+        var shiftedRanges: [NSRange] = []
+        shiftedRanges.reserveCapacity(ranges.count)
+        for range in ranges {
+            if range.location >= editSpan.upperBound {
+                let location = range.location + delta
+                guard location >= 0 else { return nil }
+                shiftedRanges.append(NSRange(location: location, length: range.length))
+            } else {
+                shiftedRanges.append(range)
+            }
+        }
+        return shiftedRanges
+    }
 }

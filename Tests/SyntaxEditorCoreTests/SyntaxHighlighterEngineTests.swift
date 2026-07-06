@@ -1362,3 +1362,107 @@ struct SyntaxHighlighterEngineTests {
         #expect(number.styleKeys.first == "editor.syntax.number")
     }
 }
+
+extension SyntaxHighlighterEngineTests {
+    private static let plannedCSSHTMLSource = """
+    <!doctype html>
+    <html>
+    <head>
+    <style>
+    @media screen { .card { color: red; } }
+    a:hover { color: blue; }
+    </style>
+    <script>
+    const marker = "</scr" + "ipt>";
+    </script>
+    </head>
+    <body>
+    <p>ReferenceParagraphMarker body text</p>
+    </body>
+    </html>
+    """
+
+    private func plannedCSSSettleMatchesFresh(
+        editing target: String,
+        replacement: String,
+        source: String = SyntaxHighlighterEngineTests.plannedCSSHTMLSource,
+        language: SyntaxLanguage = .html
+    ) async -> Bool {
+        let nsSource = source as NSString
+        let targetRange = nsSource.range(of: target)
+        guard targetRange.location != NSNotFound else { return false }
+
+        let engine = SyntaxHighlighterEngine()
+        _ = await engine.reset(source: source, language: language, revision: 0)
+        let next = nsSource.replacingCharacters(in: targetRange, with: replacement)
+        _ = await engine.update(
+            source: next,
+            language: language,
+            mutation: SyntaxEditorTextChange.Replacement(
+                location: targetRange.location,
+                length: targetRange.length,
+                replacement: replacement
+            ),
+            revision: 1
+        )
+
+        let settled = await engine.currentTokensForTesting()
+        let fresh = await SyntaxHighlighterEngine().render(source: next, language: language)
+        return highlightTokensMatch(settled, fresh)
+    }
+
+    @Test("SyntaxHighlighterEngine keeps CSS overlays exact for HTML edits outside raw-text regions")
+    func highlighterKeepsCSSOverlaysExactForHTMLBodyEdits() async throws {
+        // Sanity: the fixture must produce CSS semantic overlays at all.
+        let fresh = await SyntaxHighlighterEngine().render(
+            source: Self.plannedCSSHTMLSource,
+            language: .html
+        )
+        #expect(fresh.contains { $0.isSemanticOverlay && $0.language == .css })
+
+        // Region-outside, quote-free edit: the planned `.reuse` path.
+        #expect(await plannedCSSSettleMatchesFresh(
+            editing: "ReferenceParagraphMarker",
+            replacement: "ReferenceParagraphMarkerEdited"
+        ))
+    }
+
+    @Test("SyntaxHighlighterEngine keeps CSS overlays exact for HTML quote edits")
+    func highlighterKeepsCSSOverlaysExactForHTMLQuoteEdits() async throws {
+        // Quote characters force the conservative merge; the result must
+        // still settle to a fresh highlight.
+        #expect(await plannedCSSSettleMatchesFresh(
+            editing: "body text",
+            replacement: "body's text \"quoted\""
+        ))
+    }
+
+    @Test("SyntaxHighlighterEngine keeps CSS overlays exact for HTML style edits")
+    func highlighterKeepsCSSOverlaysExactForHTMLStyleEdits() async throws {
+        // In-region edit: falls back to the full merge and recolors the rule.
+        #expect(await plannedCSSSettleMatchesFresh(
+            editing: "color: red",
+            replacement: "color: green"
+        ))
+    }
+
+    @Test("SyntaxHighlighterEngine keeps CSS overlays exact for HTML script edits")
+    func highlighterKeepsCSSOverlaysExactForHTMLScriptEdits() async throws {
+        // Script-region edit (can move that region's end): conservative merge.
+        #expect(await plannedCSSSettleMatchesFresh(
+            editing: "const marker",
+            replacement: "const renamedMarker"
+        ))
+    }
+
+    @Test("SyntaxHighlighterEngine keeps pure CSS updates equal to full reset")
+    func highlighterKeepsPureCSSUpdatesEqualToFullReset() async throws {
+        let source = "@media screen { .card { color: red; } }\na:hover { color: blue; }\n"
+        #expect(await plannedCSSSettleMatchesFresh(
+            editing: "color: red",
+            replacement: "color: green",
+            source: source,
+            language: .css
+        ))
+    }
+}
