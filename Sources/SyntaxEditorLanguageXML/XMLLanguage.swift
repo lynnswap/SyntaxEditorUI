@@ -56,8 +56,16 @@ package struct XMLLanguage: SyntaxLanguageSupport {
     package func isInsideLiteralOrComment(source: String, location: Int) -> Bool {
         let nsSource = source as NSString
         let clampedLocation = max(0, min(location, nsSource.length))
-        let prefix = nsSource.substring(to: clampedLocation)
-        return PrefixAnalyzer(text: prefix).analysis.shouldSuppressQuoteAutoPair
+        var analysis = PrefixAnalysis()
+        var cursor = 0
+        PrefixAnalyzer.advance(
+            &analysis,
+            in: nsSource,
+            cursor: &cursor,
+            limit: clampedLocation,
+            limitIsEndOfText: true
+        )
+        return analysis.shouldSuppressQuoteAutoPair
     }
 }
 
@@ -118,30 +126,26 @@ extension XMLLanguage {
         }
     }
 
-    struct PrefixAnalyzer {
-        let analysis: PrefixAnalysis
-
-        init(text: String) {
-            let nsText = text as NSString
-            var analysis = PrefixAnalysis()
-            var cursor = 0
-            Self.advance(&analysis, in: nsText, cursor: &cursor, limit: nsText.length)
-            self.analysis = analysis
-        }
-
+    enum PrefixAnalyzer {
+        /// `limitIsEndOfText` treats `limit` as the end of the analyzed text
+        /// (no lookahead past it), matching what analyzing a prefix substring
+        /// would see. Leave it `false` for streaming callers that keep
+        /// advancing the same cursor with growing limits.
         @discardableResult
         static func advance(
             _ analysis: inout PrefixAnalysis,
             in source: NSString,
             cursor: inout Int,
             limit: Int,
+            limitIsEndOfText: Bool = false,
             onDTDDelimiter: ((DTDDelimiter) -> Bool)? = nil
         ) -> Bool {
             let upperBound = max(0, min(limit, source.length))
+            let end = limitIsEndOfText ? upperBound : source.length
 
             while cursor < upperBound {
                 if analysis.inComment {
-                    if hasPrefix("-->", in: source, at: cursor) {
+                    if hasPrefix("-->", in: source, at: cursor, end: end) {
                         analysis.inComment = false
                         cursor = min(cursor + 3, upperBound)
                     } else {
@@ -151,7 +155,7 @@ extension XMLLanguage {
                 }
 
                 if analysis.inCDATA {
-                    if hasPrefix("]]>", in: source, at: cursor) {
+                    if hasPrefix("]]>", in: source, at: cursor, end: end) {
                         analysis.inCDATA = false
                         cursor = min(cursor + 3, upperBound)
                     } else {
@@ -181,7 +185,7 @@ extension XMLLanguage {
                         continue
                     }
 
-                    if hasPrefix("<!--", in: source, at: cursor) {
+                    if hasPrefix("<!--", in: source, at: cursor, end: end) {
                         analysis.canStartAttributeValue = false
                         analysis.inComment = true
                         cursor += 4
@@ -189,7 +193,7 @@ extension XMLLanguage {
                     }
 
                     if analysis.declarationBracketDepth > 0 {
-                        if hasPrefix("<!", in: source, at: cursor) || hasPrefix("<?", in: source, at: cursor) {
+                        if hasPrefix("<!", in: source, at: cursor, end: end) || hasPrefix("<?", in: source, at: cursor, end: end) {
                             analysis.canStartAttributeValue = false
                             analysis.inDTDMarkupDeclaration = true
                             analysis.previousDeclarationToken = nil
@@ -292,7 +296,7 @@ extension XMLLanguage {
                         continue
                     }
 
-                    if let token = declarationToken(in: source, cursor: &cursor) {
+                    if let token = declarationToken(in: source, cursor: &cursor, end: end) {
                         let uppercased = token.uppercased()
                         let followsEntityKeyword =
                             analysis.previousDeclarationToken == "ENTITY" ||
@@ -407,19 +411,19 @@ extension XMLLanguage {
                     continue
                 }
 
-                if hasPrefix("<!--", in: source, at: cursor) {
+                if hasPrefix("<!--", in: source, at: cursor, end: end) {
                     analysis.inComment = true
                     cursor += 4
                     continue
                 }
 
-                if hasPrefix("<![CDATA[", in: source, at: cursor) {
+                if hasPrefix("<![CDATA[", in: source, at: cursor, end: end) {
                     analysis.inCDATA = true
                     cursor += 9
                     continue
                 }
 
-                if hasPrefix("<!", in: source, at: cursor) {
+                if hasPrefix("<!", in: source, at: cursor, end: end) {
                     analysis.inDeclaration = true
                     analysis.inDeclarationSingleQuote = false
                     analysis.inDeclarationDoubleQuote = false
@@ -432,8 +436,8 @@ extension XMLLanguage {
                     continue
                 }
 
-                if startsTag(in: source, at: cursor) {
-                    let tag = tagDescriptor(in: source, at: cursor)
+                if startsTag(in: source, at: cursor, end: end) {
+                    let tag = tagDescriptor(in: source, at: cursor, end: end)
                     analysis.inTag = true
                     analysis.canStartAttributeValue = false
                     analysis.inUnquotedAttributeValue = false
@@ -448,14 +452,14 @@ extension XMLLanguage {
             return false
         }
 
-        private static func startsTag(in source: NSString, at offset: Int) -> Bool {
-            guard offset >= 0, offset < source.length, source.character(at: offset) == 60 else {
+        private static func startsTag(in source: NSString, at offset: Int, end: Int) -> Bool {
+            guard offset >= 0, offset < end, source.character(at: offset) == 60 else {
                 return false
             }
 
             let nextOffset = offset + 1
-            guard nextOffset < source.length,
-                  let next = composedCharacter(in: source, at: nextOffset)
+            guard nextOffset < end,
+                  let next = composedCharacter(in: source, at: nextOffset, end: end)
             else {
                 return false
             }
@@ -465,24 +469,25 @@ extension XMLLanguage {
 
         private static func tagDescriptor(
             in source: NSString,
-            at offset: Int
+            at offset: Int,
+            end: Int
         ) -> (isClosing: Bool, nextCursor: Int) {
             var cursor = offset + 1
             var isClosing = false
 
-            if cursor < source.length, source.character(at: cursor) == 47 {
+            if cursor < end, source.character(at: cursor) == 47 {
                 isClosing = true
                 cursor += 1
-            } else if cursor < source.length, source.character(at: cursor) == 63 {
+            } else if cursor < end, source.character(at: cursor) == 63 {
                 cursor += 1
             }
 
-            while cursor < source.length, isWhitespace(source.character(at: cursor)) {
+            while cursor < end, isWhitespace(source.character(at: cursor)) {
                 cursor += 1
             }
 
-            while cursor < source.length,
-                  let next = composedCharacter(in: source, at: cursor),
+            while cursor < end,
+                  let next = composedCharacter(in: source, at: cursor, end: end),
                   isTagNameCharacter(next.value)
             {
                 cursor += next.length
@@ -491,9 +496,9 @@ extension XMLLanguage {
             return (isClosing: isClosing, nextCursor: cursor)
         }
 
-        private static func hasPrefix(_ literal: String, in source: NSString, at offset: Int) -> Bool {
+        private static func hasPrefix(_ literal: String, in source: NSString, at offset: Int, end: Int) -> Bool {
             let length = literal.utf16.count
-            guard offset >= 0, offset + length <= source.length else {
+            guard offset >= 0, offset + length <= end else {
                 return false
             }
 
@@ -511,9 +516,9 @@ extension XMLLanguage {
             "INCLUDE",
         ]
 
-        private static func declarationToken(in source: NSString, cursor: inout Int) -> String? {
-            guard cursor < source.length,
-                  let first = composedCharacter(in: source, at: cursor),
+        private static func declarationToken(in source: NSString, cursor: inout Int, end: Int) -> String? {
+            guard cursor < end,
+                  let first = composedCharacter(in: source, at: cursor, end: end),
                   isDeclarationTokenStart(first.value)
             else {
                 return nil
@@ -521,8 +526,8 @@ extension XMLLanguage {
 
             let start = cursor
             cursor += first.length
-            while cursor < source.length,
-                  let next = composedCharacter(in: source, at: cursor),
+            while cursor < end,
+                  let next = composedCharacter(in: source, at: cursor, end: end),
                   isDeclarationTokenCharacter(next.value)
             {
                 cursor += next.length
@@ -533,15 +538,22 @@ extension XMLLanguage {
 
         private static func composedCharacter(
             in source: NSString,
-            at offset: Int
+            at offset: Int,
+            end: Int
         ) -> (value: String, length: Int)? {
-            guard offset >= 0, offset < source.length else {
+            guard offset >= 0, offset < end else {
                 return nil
             }
 
-            let range = source.rangeOfComposedCharacterSequence(at: offset)
+            var range = source.rangeOfComposedCharacterSequence(at: offset)
             guard range.location != NSNotFound, range.length > 0 else {
                 return nil
+            }
+            // A composed sequence straddling `end` did not exist when the text
+            // itself ended there: clamp so the trailing code units past `end`
+            // stay invisible, matching prefix-substring analysis.
+            if range.location + range.length > end {
+                range.length = end - range.location
             }
 
             return (value: source.substring(with: range), length: range.length)
@@ -622,8 +634,15 @@ extension XMLLanguage {
 
     static func commentContextState(in source: NSString, location: Int) -> CommentContextState {
         let clampedLocation = max(0, min(location, source.length))
-        let prefix = source.substring(to: clampedLocation)
-        let analysis = PrefixAnalyzer(text: prefix).analysis
+        var analysis = PrefixAnalysis()
+        var cursor = 0
+        PrefixAnalyzer.advance(
+            &analysis,
+            in: source,
+            cursor: &cursor,
+            limit: clampedLocation,
+            limitIsEndOfText: true
+        )
 
         if analysis.inComment {
             return .insideComment
@@ -649,8 +668,16 @@ extension XMLLanguage {
             return false
         }
 
-        var analysis = PrefixAnalyzer(text: source.substring(to: safeRange.location)).analysis
-        var cursor = safeRange.location
+        var analysis = PrefixAnalysis()
+        var cursor = 0
+        PrefixAnalyzer.advance(
+            &analysis,
+            in: source,
+            cursor: &cursor,
+            limit: safeRange.location,
+            limitIsEndOfText: true
+        )
+        cursor = safeRange.location
         return PrefixAnalyzer.advance(
             &analysis,
             in: source,

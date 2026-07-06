@@ -110,8 +110,15 @@ package struct HTMLLanguage: SyntaxLanguageSupport {
             break
         }
 
-        let prefix = nsSource.substring(to: clampedLocation)
-        let analysis = PrefixAnalyzer(text: prefix).analysis
+        var analysis = PrefixAnalysis()
+        var cursor = 0
+        PrefixAnalyzer.advance(
+            &analysis,
+            in: nsSource,
+            cursor: &cursor,
+            limit: clampedLocation,
+            limitIsEndOfText: true
+        )
         return analysis.shouldSuppressQuoteAutoPair
     }
 }
@@ -218,28 +225,24 @@ private extension HTMLLanguage {
         }
     }
 
-    struct PrefixAnalyzer {
-        let analysis: PrefixAnalysis
-
-        init(text: String) {
-            let nsText = text as NSString
-            var analysis = PrefixAnalysis()
-            var cursor = 0
-            Self.advance(&analysis, in: nsText, cursor: &cursor, limit: nsText.length)
-            self.analysis = analysis
-        }
-
+    enum PrefixAnalyzer {
+        /// `limitIsEndOfText` treats `limit` as the end of the analyzed text
+        /// (no lookahead past it), matching what analyzing a prefix substring
+        /// would see. Leave it `false` for streaming callers that keep
+        /// advancing the same cursor with growing limits.
         static func advance(
             _ analysis: inout PrefixAnalysis,
             in source: NSString,
             cursor: inout Int,
-            limit: Int
+            limit: Int,
+            limitIsEndOfText: Bool = false
         ) {
             let upperBound = max(0, min(limit, source.length))
+            let end = limitIsEndOfText ? upperBound : source.length
 
             while cursor < upperBound {
                 if analysis.inComment {
-                    if Self.hasPrefix("-->", in: source, at: cursor) {
+                    if Self.hasPrefix("-->", in: source, at: cursor, end: end) {
                         analysis.inComment = false
                         cursor = min(cursor + 3, upperBound)
                     } else {
@@ -376,7 +379,7 @@ private extension HTMLLanguage {
                 }
 
                 if let rawTextElementName = analysis.rawTextElementName {
-                    let descriptor = HTMLLanguage.rawTextTagDescriptor(in: source, at: cursor)
+                    let descriptor = HTMLLanguage.rawTextTagDescriptor(in: source, at: cursor, end: end)
                     if descriptor.isClosing,
                        descriptor.name == rawTextElementName
                     {
@@ -413,16 +416,16 @@ private extension HTMLLanguage {
                     continue
                 }
 
-                if Self.hasPrefix("<!--", in: source, at: cursor) {
+                if Self.hasPrefix("<!--", in: source, at: cursor, end: end) {
                     analysis.inComment = true
                     cursor += 4
                     continue
                 }
 
-                if Self.startsTag(in: source, at: cursor) {
+                if Self.startsTag(in: source, at: cursor, end: end) {
                     analysis.inTag = true
                     analysis.canStartAttributeValue = false
-                    let tag = Self.tagDescriptor(in: source, at: cursor)
+                    let tag = Self.tagDescriptor(in: source, at: cursor, end: end)
                     analysis.currentTagName = tag.name
                     analysis.currentTagIsClosing = tag.isClosing
                     analysis.currentClosingTagCanTerminateRawText = tag.isClosing
@@ -435,28 +438,32 @@ private extension HTMLLanguage {
             }
         }
 
-        private static func startsTag(in source: NSString, at offset: Int) -> Bool {
-            guard offset >= 0, offset < source.length, source.character(at: offset) == 60 else {
+        private static func startsTag(in source: NSString, at offset: Int, end: Int) -> Bool {
+            guard offset >= 0, offset < end, source.character(at: offset) == 60 else {
                 return false
             }
 
             let nextOffset = offset + 1
-            guard nextOffset < source.length else { return false }
+            guard nextOffset < end else { return false }
             let next = source.character(at: nextOffset)
 
             return isASCIIAlpha(next) || next == 47 || next == 63
         }
 
-        private static func tagDescriptor(in source: NSString, at offset: Int) -> (name: String, isClosing: Bool, nextCursor: Int) {
+        private static func tagDescriptor(
+            in source: NSString,
+            at offset: Int,
+            end: Int
+        ) -> (name: String, isClosing: Bool, nextCursor: Int) {
             var cursor = offset + 1
             var isClosing = false
 
-            if cursor < source.length, source.character(at: cursor) == 47 {
+            if cursor < end, source.character(at: cursor) == 47 {
                 isClosing = true
                 cursor += 1
             }
 
-            while cursor < source.length {
+            while cursor < end {
                 let codeUnit = source.character(at: cursor)
                 if codeUnit == 32 || codeUnit == 9 || codeUnit == 10 || codeUnit == 13 {
                     cursor += 1
@@ -466,7 +473,7 @@ private extension HTMLLanguage {
             }
 
             let nameStart = cursor
-            while cursor < source.length, isTagNameCharacter(source.character(at: cursor)) {
+            while cursor < end, isTagNameCharacter(source.character(at: cursor)) {
                 cursor += 1
             }
 
@@ -480,25 +487,15 @@ private extension HTMLLanguage {
             return (name: name, isClosing: isClosing, nextCursor: cursor)
         }
 
-        private static func hasPrefix(_ literal: String, in source: NSString, at offset: Int) -> Bool {
-            HTMLLanguage.hasPrefix(literal, in: source, at: offset)
+        private static func hasPrefix(_ literal: String, in source: NSString, at offset: Int, end: Int) -> Bool {
+            guard offset + literal.utf16.count <= end else {
+                return false
+            }
+            return HTMLLanguage.hasPrefix(literal, in: source, at: offset)
         }
 
         private static func isASCIIAlpha(_ codeUnit: unichar) -> Bool {
             (65...90).contains(Int(codeUnit)) || (97...122).contains(Int(codeUnit))
-        }
-
-        private static func rawTextClosingTagName(in source: NSString, at offset: Int) -> String? {
-            guard hasPrefix("</", in: source, at: offset) else {
-                return nil
-            }
-
-            let descriptor = tagDescriptor(in: source, at: offset)
-            guard descriptor.isClosing, isRawTextElementName(descriptor.name) else {
-                return nil
-            }
-
-            return descriptor.name
         }
 
         private static func isTagNameCharacter(_ codeUnit: unichar) -> Bool {
@@ -952,7 +949,7 @@ private extension HTMLLanguage {
                 break
             }
 
-            let descriptor = rawTextTagDescriptor(in: source, at: closingTagStart)
+            let descriptor = rawTextTagDescriptor(in: source, at: closingTagStart, end: source.length)
             guard descriptor.isClosing,
                   descriptor.name == startTag.name,
                   let closingTagEnd = endOfClosingRawTextTag(in: source, after: descriptor.nextCursor)
@@ -1003,7 +1000,7 @@ private extension HTMLLanguage {
                 embeddedLanguage: embeddedLanguage
                )
             {
-                let descriptor = rawTextTagDescriptor(in: source, at: closingTagStart)
+                let descriptor = rawTextTagDescriptor(in: source, at: closingTagStart, end: source.length)
                 if let closingTagEnd = endOfClosingRawTextTag(in: source, after: descriptor.nextCursor) {
                     protectedEnd = closingTagEnd + 1
                 } else {
@@ -1014,7 +1011,7 @@ private extension HTMLLanguage {
                 rawTextElementName: startTag.name,
                 from: contentStart
             ) {
-                let descriptor = rawTextTagDescriptor(in: source, at: closingTagStart)
+                let descriptor = rawTextTagDescriptor(in: source, at: closingTagStart, end: source.length)
                 if let closingTagEnd = endOfClosingRawTextTag(in: source, after: descriptor.nextCursor) {
                     protectedEnd = closingTagEnd + 1
                 } else {
@@ -1110,8 +1107,15 @@ private extension HTMLLanguage {
 
     static func rawTextLocationState(in source: NSString, location: Int) -> RawTextLocationState {
         let clampedLocation = max(0, min(location, source.length))
-        let prefix = source.substring(to: clampedLocation)
-        let analysis = PrefixAnalyzer(text: prefix).analysis
+        var analysis = PrefixAnalysis()
+        var cursor = 0
+        PrefixAnalyzer.advance(
+            &analysis,
+            in: source,
+            cursor: &cursor,
+            limit: clampedLocation,
+            limitIsEndOfText: true
+        )
         guard let rawTextElementName = analysis.rawTextElementName,
               let rawTextContentStart = analysis.rawTextContentStart
         else {
@@ -1187,7 +1191,7 @@ private extension HTMLLanguage {
             var absoluteCursor = clampedSearchFrom
 
             while absoluteCursor < source.length {
-                let descriptor = rawTextTagDescriptor(in: source, at: absoluteCursor)
+                let descriptor = rawTextTagDescriptor(in: source, at: absoluteCursor, end: source.length)
                 if descriptor.isClosing,
                    descriptor.name == rawTextElementName
                 {
@@ -1631,7 +1635,7 @@ extension HTMLLanguage {
                 continue
             }
 
-            let descriptor = rawTextTagDescriptor(in: source, at: candidateLocation)
+            let descriptor = rawTextTagDescriptor(in: source, at: candidateLocation, end: source.length)
             guard descriptor.isClosing == false,
                   let tagName = descriptor.name,
                   let tagEnd = endOfHTMLTag(in: source, after: descriptor.nextCursor)
@@ -1721,7 +1725,7 @@ extension HTMLLanguage {
                 continue
             }
 
-            let descriptor = rawTextTagDescriptor(in: source, at: cursor)
+            let descriptor = rawTextTagDescriptor(in: source, at: cursor, end: source.length)
             guard descriptor.isClosing,
                   descriptor.name == rawTextElementName,
                   endOfClosingRawTextTag(in: source, after: descriptor.nextCursor) != nil
@@ -1738,21 +1742,22 @@ extension HTMLLanguage {
 
     private static func rawTextTagDescriptor(
         in source: NSString,
-        at offset: Int
+        at offset: Int,
+        end: Int
     ) -> (name: String?, isClosing: Bool, nextCursor: Int) {
-        guard offset >= 0, offset < source.length, source.character(at: offset) == 60 else {
+        guard offset >= 0, offset < end, source.character(at: offset) == 60 else {
             return (nil, false, offset)
         }
 
         var cursor = offset + 1
         var isClosing = false
 
-        if cursor < source.length, source.character(at: cursor) == 47 {
+        if cursor < end, source.character(at: cursor) == 47 {
             isClosing = true
             cursor += 1
         }
 
-        while cursor < source.length {
+        while cursor < end {
             let codeUnit = source.character(at: cursor)
             if isHTMLWhitespace(codeUnit) {
                 cursor += 1
@@ -1762,7 +1767,7 @@ extension HTMLLanguage {
         }
 
         let nameStart = cursor
-        while cursor < source.length, isHTMLTagNameCharacter(source.character(at: cursor)) {
+        while cursor < end, isHTMLTagNameCharacter(source.character(at: cursor)) {
             cursor += 1
         }
 
