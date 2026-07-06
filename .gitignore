@@ -9,3 +9,4 @@ xcuserdata/
 project.xcworkspace/
 *.xcodeproj/project.xcworkspace/xcshareddata/swiftpm/
 dependencies/
+.claude

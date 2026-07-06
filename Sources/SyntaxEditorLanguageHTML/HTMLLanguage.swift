@@ -1587,9 +1587,28 @@ extension HTMLLanguage {
         in source: NSString,
         from startOffset: Int
     ) -> (name: String, range: NSRange)? {
-        let clampedStart = max(0, min(startOffset, source.length))
         var analysis = PrefixAnalysis()
         var analysisCursor = 0
+        return nextRawTextStartTag(
+            in: source,
+            from: startOffset,
+            analysis: &analysis,
+            analysisCursor: &analysisCursor
+        )
+    }
+
+    /// Resumable variant: region scans call this in a loop with one shared
+    /// analyzer stream instead of re-streaming the prefix from zero per
+    /// region (which made a k-region scan cost O(k·n)). The passed state must
+    /// describe `source` up to `analysisCursor` with `analysisCursor` at or
+    /// before `startOffset`.
+    private static func nextRawTextStartTag(
+        in source: NSString,
+        from startOffset: Int,
+        analysis: inout PrefixAnalysis,
+        analysisCursor: inout Int
+    ) -> (name: String, range: NSRange)? {
+        let clampedStart = max(0, min(startOffset, source.length))
         PrefixAnalyzer.advance(&analysis, in: source, cursor: &analysisCursor, limit: clampedStart)
         var searchCursor = clampedStart
 
@@ -1659,8 +1678,15 @@ extension HTMLLanguage {
         from startOffset: Int
     ) -> (name: String, range: NSRange)? {
         var cursor = max(0, startOffset)
+        var analysis = PrefixAnalysis()
+        var analysisCursor = 0
 
-        while let startTag = nextRawTextStartTag(in: source, from: cursor) {
+        while let startTag = nextRawTextStartTag(
+            in: source,
+            from: cursor,
+            analysis: &analysis,
+            analysisCursor: &analysisCursor
+        ) {
             let startTagText = source.substring(with: startTag.range)
             let embeddedLanguage: SyntaxLanguage?
             switch startTag.name {
@@ -1840,8 +1866,15 @@ extension HTMLLanguage {
         let nsSource = source as NSString
         let mutableSource = NSMutableString(string: source)
         var cursor = 0
+        var analysis = PrefixAnalysis()
+        var analysisCursor = 0
 
-        while let startTag = nextRawTextStartTag(in: nsSource, from: cursor) {
+        while let startTag = nextRawTextStartTag(
+            in: nsSource,
+            from: cursor,
+            analysis: &analysis,
+            analysisCursor: &analysisCursor
+        ) {
             let contentStart = NSMaxRange(startTag.range)
             let startTagText = nsSource.substring(with: startTag.range)
             let embeddedLanguage: SyntaxLanguage?
@@ -1891,8 +1924,15 @@ extension HTMLLanguage {
         let nsSource = source as NSString
         var ranges: [NSRange] = []
         var cursor = 0
+        var analysis = PrefixAnalysis()
+        var analysisCursor = 0
 
-        while let startTag = nextRawTextStartTag(in: nsSource, from: cursor) {
+        while let startTag = nextRawTextStartTag(
+            in: nsSource,
+            from: cursor,
+            analysis: &analysis,
+            analysisCursor: &analysisCursor
+        ) {
             let contentStart = NSMaxRange(startTag.range)
             let startTagText = nsSource.substring(with: startTag.range)
             let embeddedLanguage: SyntaxLanguage?
