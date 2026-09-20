@@ -3,10 +3,18 @@ import ObservationBridge
 import SyntaxEditorCore
 import UIKit
 
+/// A UIKit comparison of a modified document and its read-only reference.
+///
+/// The modified editor remains installed across presentation changes, preserving
+/// selection, marked text, and undo history. The reference follows its language,
+/// theme, font size, and wrapping settings. Find from inline deleted text opens
+/// the full reference pane.
 @MainActor
-final class SyntaxEditorComparisonView: UIView {
-    private(set) var model: SyntaxEditorComparisonModel
-    let modifiedEditor: SyntaxEditorView
+public final class SyntaxEditorComparisonView: UIView {
+    /// The comparison displayed by this view.
+    public private(set) var model: SyntaxEditorComparisonModel
+    /// The modified document's editor, available for native configuration.
+    public let modifiedEditor: SyntaxEditorView
     let originalEditor: SyntaxEditorView
     let modifiedLayout: SyntaxEditorComparisonTextLayout
     let originalLayout: SyntaxEditorComparisonTextLayout
@@ -51,7 +59,8 @@ final class SyntaxEditorComparisonView: UIView {
         }
     }
 
-    init(model: SyntaxEditorComparisonModel) {
+    /// Creates a comparison view with an app-owned model.
+    public init(model: SyntaxEditorComparisonModel) {
         self.model = model
         let modifiedEditor = SyntaxEditorView(model: model.modified)
         let originalEditor = SyntaxEditorView(model: model.original)
@@ -63,6 +72,9 @@ final class SyntaxEditorComparisonView: UIView {
         self.inlineLayout = inlineLayout
         super.init(frame: .zero)
         modifiedEditor.inlineComparisonLayout = inlineLayout
+        modifiedLayout.comparison = self
+        originalLayout.comparison = self
+        inlineLayout.onFind = { [weak self] action, sender in self?.findInOriginal(action, sender: sender) }
         originalEditor.didUpdateSyntaxRendering = { [weak inlineLayout, weak modifiedEditor] ranges in
             if inlineLayout?.invalidateReferenceStyles(in: ranges) == true { modifiedEditor?.setNeedsTextLayout() }
         }
@@ -88,13 +100,17 @@ final class SyntaxEditorComparisonView: UIView {
     }
 
     @available(*, unavailable)
-    required init?(coder: NSCoder) {
+    public required init?(coder: NSCoder) {
         fatalError("init(coder:) has not been implemented")
     }
 
     deinit { refreshTask?.cancel() }
 
-    func update(model nextModel: SyntaxEditorComparisonModel) {
+    /// Switches the view and both editors to another comparison model.
+    ///
+    /// Passing the current instance has no effect. Rebinding the modified editor
+    /// to another document clears its undo history.
+    public func update(model nextModel: SyntaxEditorComparisonModel) {
         guard model !== nextModel else { return }
         comparisonObservation?.cancel()
         configurationObservation?.cancel()
@@ -115,7 +131,7 @@ final class SyntaxEditorComparisonView: UIView {
         startObservation()
     }
 
-    override func layoutSubviews() {
+    public override func layoutSubviews() {
         super.layoutSubviews()
         let showsReference = !originalEditor.isHidden
         let dividerWidth = showsReference ? 1 / max(1, traitCollection.displayScale) : 0
@@ -141,9 +157,18 @@ final class SyntaxEditorComparisonView: UIView {
         }
     }
 
-    override func tintColorDidChange() {
+    public override func tintColorDidChange() {
         super.tintColorDidChange()
         scheduleRefresh(appearanceChanged: true)
+    }
+
+    func findInOriginal(_ action: Selector, sender: Any?) {
+        model.presentation = .sideBySide
+        refreshComparison()
+        layoutIfNeeded()
+        originalEditor.selectedRange = model.original.selectedRange
+        originalEditor.becomeFirstResponder()
+        _ = unsafe originalEditor.perform(action, with: sender)
     }
 
     private func startObservation() {
@@ -205,9 +230,13 @@ final class SyntaxEditorComparisonView: UIView {
     }
 
     private func setReferenceVisible(_ isVisible: Bool) {
-        if !isVisible, firstResponder(in: originalEditor) != nil {
-            originalEditor.endEditing(true)
-            modifiedEditor.becomeFirstResponder()
+        if !isVisible {
+            let hadFocus = firstResponder(in: originalEditor) != nil || originalEditor.findInteraction?.isFindNavigatorVisible == true
+            originalEditor.findInteraction?.dismissFindNavigator()
+            if hadFocus {
+                originalEditor.endEditing(true)
+                modifiedEditor.becomeFirstResponder()
+            }
         }
         originalEditor.isHidden = !isVisible
         originalLayout.rulerView.isHidden = !isVisible

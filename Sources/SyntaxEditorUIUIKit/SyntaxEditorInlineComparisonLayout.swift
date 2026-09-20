@@ -27,6 +27,7 @@ final class SyntaxEditorInlineComparisonLayout {
     private var settings: Settings?
     private var needsMarginUpdate = false
     private var selectedChangeIndex: Int?
+    var onFind: ((Selector, Any?) -> Void)?
 
     var deletedViews: [Int: SyntaxEditorComparisonDeletedTextView] {
         Dictionary(uniqueKeysWithValues: blocks.compactMap { block in
@@ -247,6 +248,7 @@ final class SyntaxEditorInlineComparisonLayout {
             view.install(attributed, originalLocation: block.change.originalRange.location)
             view.setSelection(originalEditor.model.selectedRange)
             view.onSelectionChange = { [weak originalEditor] range in originalEditor?.model.selectedRange = range }
+            view.onFind = { [weak self] action, sender in self?.onFind?(action, sender) }
             view.onScroll = { [weak self, weak block] offset in
                 guard let self, let block else { return }
                 self.deletedViewDidScroll(block, to: offset)

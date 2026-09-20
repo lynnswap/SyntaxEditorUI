@@ -162,7 +162,7 @@ extension SyntaxEditorUITests {
         #expect(view.modifiedLayout.rulerView.frame == rulerFrame)
         #expect(editor.text == text)
         #expect(editor.textContainer.size.width <= editor.bounds.width - editor.adjustedContentInset.left - editor.adjustedContentInset.right + 1)
-        #expect(!view.modifiedLayout.rulerView.isUserInteractionEnabled)
+        #expect(view.modifiedLayout.rulerView.isUserInteractionEnabled)
         #expect(editor.hitTest(CGPoint(x: editor.bounds.midX, y: editor.bounds.midY), with: nil) === editor)
     }
 
