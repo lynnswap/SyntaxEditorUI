@@ -285,7 +285,7 @@ final class SyntaxEditorInlineComparisonLayout {
 
     private func detach(_ view: SyntaxEditorComparisonDeletedTextView) {
         if let window = unsafe view.window, window.firstResponder === view {
-            window.makeFirstResponder(nil)
+            window.makeFirstResponder(editor?.textView)
         }
         view.onSelectionChange = nil
         view.removeFromSuperview()

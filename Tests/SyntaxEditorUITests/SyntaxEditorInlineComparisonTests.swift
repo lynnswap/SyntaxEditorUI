@@ -176,6 +176,9 @@ extension SyntaxEditorUITests {
                 as? SyntaxEditorTextInputView.TextLayoutFragment
         }
         #expect(oldFragments.contains { $0.comparisonTopMargin > 0 })
+        let deleted = try #require(fixture.view.inlineLayout.deletedViews[0])
+        fixture.window.makeFirstResponder(deleted)
+        deleted.setSelectedRange(NSRange(location: 1, length: 3))
         fixture.view.model.presentation = .changeMarkers
         await fixture.view.waitForPendingComparisonRefreshForTesting {
             fixture.view.displayedPresentationForTesting == .changeMarkers
@@ -183,6 +186,7 @@ extension SyntaxEditorUITests {
         layoutInlineFixture(fixture.view)
         #expect(fixture.view.inlineLayout.deletedViews.isEmpty)
         #expect(fixture.view.inlineLayout.additionalHeight == 0)
+        #expect(fixture.window.firstResponder === editor.textView)
         #expect(oldFragments.allSatisfy { $0.comparisonTopMargin == 0 && $0.comparisonBottomMargin == 0 })
         let first = try #require(editor.textView.rectsForCharacterRange(NSRange(location: 0, length: 1)).first)
         #expect(first.minY < first.height)
