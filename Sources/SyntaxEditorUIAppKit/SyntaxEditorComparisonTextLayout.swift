@@ -9,6 +9,7 @@ final class SyntaxEditorComparisonTextLayout {
     enum Side { case original, modified }
 
     private weak var editor: SyntaxEditorView?
+    weak var comparison: SyntaxEditorComparisonView?
     let side: Side
     private(set) var changes: [Change] = []
     private var inlineRangeIndexes: [TextRangeIntersectionIndex] = []
@@ -42,7 +43,13 @@ final class SyntaxEditorComparisonTextLayout {
 
     func updateSelectedChange(_ index: Int?) {
         selectedChangeIndex = index
-        ruler?.setAccessibilityValue(index.map { "Change \($0 + 1) of \(changes.count)" } ?? "\(changes.count) changes")
+        let value: String
+        if let count = comparison?.model.changeCount {
+            value = index.map { "Change \($0 + 1) of \(count)" } ?? "\(count) changes"
+        } else {
+            value = "Comparing documents"
+        }
+        ruler?.setAccessibilityValue(value)
         layoutDidComplete()
         editor?.textView.setNeedsDisplayForVisibleTextFragments()
     }
@@ -137,6 +144,14 @@ final class SyntaxEditorComparisonTextLayout {
             setAccessibilityLabel(layout.side == .original ? "Reference line numbers and changes" : "Modified line numbers and changes")
             setAccessibilityElement(true)
             setAccessibilityRole(.group)
+            setAccessibilityCustomActions([
+                NSAccessibilityCustomAction(name: "Next change") { [weak layout] in
+                    layout?.comparison?.model.selectNextChange() ?? false
+                },
+                NSAccessibilityCustomAction(name: "Previous change") { [weak layout] in
+                    layout?.comparison?.model.selectPreviousChange() ?? false
+                },
+            ])
         }
 
         required init(coder: NSCoder) { fatalError("init(coder:) has not been implemented") }
@@ -151,6 +166,18 @@ final class SyntaxEditorComparisonTextLayout {
 
         override func drawHashMarksAndLabels(in rect: NSRect) {
             comparisonLayout?.drawRuler(self, dirtyRect: rect)
+        }
+
+        override func mouseDown(with event: NSEvent) {
+            guard let layout = comparisonLayout, let editor = layout.editor else { return }
+            let point = editor.textView.convert(event.locationInWindow, from: nil)
+            let index = editor.textView.inlineComparisonLayout?.changeIndex(atY: point.y)
+                ?? layout.changeIndex(at: editor.textView.characterIndex(at: point))
+            if let index {
+                _ = layout.comparison?.model.selectChange(at: index)
+            } else {
+                super.mouseDown(with: event)
+            }
         }
     }
 

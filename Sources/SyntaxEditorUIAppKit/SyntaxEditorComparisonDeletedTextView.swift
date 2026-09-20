@@ -4,6 +4,7 @@ import AppKit
 @MainActor
 final class SyntaxEditorComparisonDeletedTextView: NSTextView {
     var onSelectionChange: ((NSRange) -> Void)?
+    var onFind: ((Any?) -> Void)?
 
     private let contentStorage = NSTextContentStorage()
     private let comparisonStorage = NSTextStorage()
@@ -146,6 +147,9 @@ final class SyntaxEditorComparisonDeletedTextView: NSTextView {
             layer?.borderColor = NSColor.selectedControlColor.cgColor
         }
     }
+
+    override func performFindPanelAction(_ sender: Any?) { onFind?(sender) }
+    override func performTextFinderAction(_ sender: Any?) { onFind?(sender) }
 
     private var lastCharacterLocation: (any NSTextLocation)? {
         guard comparisonStorage.length > 0 else { return nil }

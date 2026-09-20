@@ -26,6 +26,8 @@ final class SyntaxEditorInlineComparisonLayout {
     private var footerBlocks: [Block] = []
     private var settings: Settings?
     private var needsMarginUpdate = false
+    private var selectedChangeIndex: Int?
+    var onFind: ((Any?) -> Void)?
 
     var deletedViews: [Int: SyntaxEditorComparisonDeletedTextView] {
         Dictionary(uniqueKeysWithValues: blocks.compactMap { block in
@@ -65,6 +67,20 @@ final class SyntaxEditorInlineComparisonLayout {
         topBlocks = Dictionary(grouping: blocks.filter { !$0.isFooter }, by: { $0.change.modifiedRange.location })
         footerBlocks = blocks.filter(\.isFooter)
         needsMarginUpdate = hadBlocks || !blocks.isEmpty
+    }
+
+    func updateSelectedChange(_ index: Int?) {
+        selectedChangeIndex = index
+        for block in blocks { block.view?.layer?.borderWidth = block.index == index ? 1 : 0 }
+    }
+
+    func changeIndex(atY y: CGFloat) -> Int? {
+        guard let editor else { return nil }
+        return blocks.first { block in
+            guard let view = block.view else { return false }
+            let frame = view.convert(view.bounds, to: editor.textView).insetBy(dx: 0, dy: -4)
+            return y >= frame.minY && y < frame.maxY
+        }?.index
     }
 
     func updateReferenceSelection(_ originalRange: NSRange) {
@@ -238,6 +254,7 @@ final class SyntaxEditorInlineComparisonLayout {
             view.onSelectionChange = { [weak originalEditor] localRange in
                 originalEditor?.model.selectedRange = NSRange(location: originalOffset + localRange.location, length: localRange.length)
             }
+            view.onFind = { [weak self] sender in self?.onFind?(sender) }
             editor.textView.textContentView.addSubview(view)
             block.view = view
         }
@@ -246,6 +263,7 @@ final class SyntaxEditorInlineComparisonLayout {
         let changed = abs(block.size.height - measured.height) > 0.5 || abs(block.size.width - measured.width) > 0.5
         block.size = measured
         view.frame.origin = CGPoint(x: padding, y: y + 4)
+        view.layer?.borderWidth = block.index == selectedChangeIndex ? 1 : 0
         return changed
     }
 
