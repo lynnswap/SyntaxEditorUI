@@ -29,6 +29,9 @@ public final class SyntaxEditorComparisonView: NSView {
     private var displayedContent: ContentIdentity?
     private var displayedSelection: Int?
     private var isSynchronizingScroll = false
+    // A deleted span collapses to one modified boundary, so reverse mapping
+    // cannot recover a viewport inside that span.
+    private var scrollSource: EditorComparisonGeometry.Side = .modified
     private var needsDividerPosition = false
     private var pendingReferenceHorizontalOffset: CGFloat?
     private var dividerFraction: CGFloat = 0.5
@@ -104,6 +107,7 @@ public final class SyntaxEditorComparisonView: NSView {
         configurationObservation?.cancel()
         refreshTask?.cancel()
         refreshTask = nil
+        scrollSource = .modified
         moveDeletedTextFocus(to: modifiedEditor.textView)
         modifiedLayout.update(changes: [], presentation: .changeMarkers, selectedChangeIndex: nil)
         originalLayout.update(changes: [], presentation: .changeMarkers, selectedChangeIndex: nil)
@@ -143,7 +147,7 @@ public final class SyntaxEditorComparisonView: NSView {
             originalEditor.reflectScrolledClipView(clip)
         }
         if model.presentation == .sideBySide {
-            synchronizeScroll(from: .modified)
+            synchronizeScroll(from: scrollSource)
         }
     }
 
@@ -290,6 +294,7 @@ public final class SyntaxEditorComparisonView: NSView {
             needsDividerPosition = true
             needsLayout = true
         } else {
+            scrollSource = .modified
             if splitView.bounds.width > splitView.dividerThickness {
                 dividerFraction = modifiedEditor.frame.width
                     / (splitView.bounds.width - splitView.dividerThickness)
@@ -319,6 +324,7 @@ public final class SyntaxEditorComparisonView: NSView {
         } else {
             return
         }
+        scrollSource = side
         isSynchronizingScroll = true
         defer { isSynchronizingScroll = false }
         synchronizeScroll(from: side)

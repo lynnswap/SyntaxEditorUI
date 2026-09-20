@@ -364,6 +364,31 @@ extension SyntaxEditorUITests {
         #expect(abs(originalY - currentOriginalSpan.midY) <= 2)
     }
 
+    @Test("Resizing preserves a reference viewport inside a deleted span")
+    @MainActor
+    func macComparisonPreservesReferenceViewportOnResize() async throws {
+        let prefix = (0..<30).map { "prefix \($0)\n" }.joined()
+        let removed = (0..<200).map { "removed \($0)\n" }.joined()
+        let suffix = (0..<200).map { "suffix \($0)\n" }.joined()
+        let context = SyntaxEditorTestContext(text: prefix + suffix, language: .plainText)
+        let (view, window) = try await makeMacComparison(original: prefix + removed + suffix, context: context, width: 900)
+        defer { window.orderOut(nil) }
+        try await changeMacComparison(view, to: .sideBySide)
+        let reference = view.originalEditor
+        let line = try #require(view.originalLayout.lineFrame(130))
+        reference.contentView.scroll(to: NSPoint(x: reference.contentView.bounds.minX, y: line.minY))
+        reference.reflectScrolledClipView(reference.contentView)
+        let beforeY = reference.textView.convert(reference.contentView.bounds.origin, from: reference.contentView).y
+        let before = try #require(view.originalLayout.logicalPosition(atY: beforeY))
+
+        window.setContentSize(NSSize(width: 720, height: 420))
+        layoutMacComparison(view)
+
+        let afterY = reference.textView.convert(reference.contentView.bounds.origin, from: reference.contentView).y
+        let after = try #require(view.originalLayout.logicalPosition(atY: afterY))
+        #expect(abs(before - after) < 0.2)
+    }
+
     @Test("Inline geometry changes retain the visible common line")
     @MainActor
     func macComparisonPreservesAnchorAcrossInlineGeometryChanges() async throws {
