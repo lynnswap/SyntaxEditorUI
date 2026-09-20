@@ -269,8 +269,9 @@ final class SyntaxEditorComparisonTextLayout {
         comparison: SyntaxEditorComparisonView
     ) -> NSAttributedString {
         let text = NSMutableAttributedString(attributedString: comparison.referenceAttributedString(in: block.range))
+        let availableRange = NSRange(location: block.range.location, length: text.length)
         for inline in changes[block.index].inlineChanges {
-            let range = NSIntersectionRange(inline.originalRange, block.range)
+            let range = NSIntersectionRange(inline.originalRange, availableRange)
             guard range.length > 0 else { continue }
             text.addAttribute(
                 .backgroundColor,

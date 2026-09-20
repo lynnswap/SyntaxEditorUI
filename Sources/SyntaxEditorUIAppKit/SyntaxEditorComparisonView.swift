@@ -103,6 +103,9 @@ public final class SyntaxEditorComparisonView: NSView {
         configurationObservation?.cancel()
         refreshTask?.cancel()
         refreshTask = nil
+        moveDeletedTextFocus(to: modifiedEditor.textView)
+        modifiedLayout.update(changes: [], presentation: .changeMarkers, selectedChangeIndex: nil)
+        originalLayout.update(changes: [], presentation: .changeMarkers, selectedChangeIndex: nil)
         model = nextModel
         modifiedEditor.update(model: nextModel.modified)
         originalEditor.update(model: nextModel.original)
@@ -235,10 +238,7 @@ public final class SyntaxEditorComparisonView: NSView {
             setReferenceVisible(showsReference)
         }
         if contentChanged {
-            if let active = unsafe window?.firstResponder as? SyntaxEditorComparisonDeletedTextView,
-               active.isDescendant(of: modifiedEditor) {
-                unsafe window?.makeFirstResponder(showsReference ? originalEditor.textView : modifiedEditor.textView)
-            }
+            moveDeletedTextFocus(to: showsReference ? originalEditor.textView : modifiedEditor.textView)
             modifiedLayout.update(
                 changes: changes ?? [],
                 presentation: identity.presentation,
@@ -269,6 +269,12 @@ public final class SyntaxEditorComparisonView: NSView {
             layoutSubtreeIfNeeded()
             synchronizeScroll(from: .modified)
         }
+    }
+
+    private func moveDeletedTextFocus(to textView: SyntaxEditorTextInputView) {
+        guard let active = unsafe window?.firstResponder as? SyntaxEditorComparisonDeletedTextView,
+              active.isDescendant(of: modifiedEditor) else { return }
+        unsafe window?.makeFirstResponder(textView)
     }
 
     private func setReferenceVisible(_ isVisible: Bool) {

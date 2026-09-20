@@ -144,6 +144,62 @@ extension SyntaxEditorUITests {
         #expect(context.model.text == source)
     }
 
+    @Test("Rebinding a comparison clears old deletion ranges before changing document and font")
+    @MainActor
+    func macComparisonRebindsShorterReferenceAndFont() async throws {
+        let context = SyntaxEditorTestContext(text: "prefix\nnew words\nend\n", language: .plainText)
+        let (view, window) = try await makeMacComparison(
+            original: "prefix\na much longer reference line\nend\n", context: context
+        )
+        defer { window.orderOut(nil) }
+        let editor = view.modifiedEditor
+        let oldDeleted = try #require(view.modifiedLayout.deletedViews[0])
+        window.makeFirstResponder(oldDeleted)
+        let nextDocument = SyntaxEditorModel(text: "new", language: .plainText, fontSizeDelta: 4)
+        let next = SyntaxEditorComparisonModel(originalText: "x", modified: nextDocument)
+        let calculation = try #require(next.calculation)
+        await calculation.value
+
+        view.update(model: next)
+        await view.originalEditor.waitForPendingHighlightForTesting()
+        await view.modifiedEditor.waitForPendingHighlightForTesting()
+        await view.waitForPendingComparisonRefreshForTesting()
+        layoutMacComparison(view)
+
+        #expect(view.model === next)
+        #expect(view.modifiedEditor === editor)
+        #expect(editor.model === nextDocument)
+        #expect(editor.textView.string == "new")
+        #expect(view.originalEditor.textView.string == "x")
+        #expect(view.modifiedLayout.deletedViews[0]?.string == "x")
+        #expect(oldDeleted.window == nil)
+        #expect(window.firstResponder === editor.textView)
+    }
+
+    @Test("A synchronous layout after shortening the reference does not reuse out-of-bounds inline spans")
+    @MainActor
+    func macComparisonLaysOutImmediatelyAfterReferenceChange() async throws {
+        let source = "prefix\nnew words\nend\n"
+        let context = SyntaxEditorTestContext(text: source, language: .plainText)
+        let (view, window) = try await makeMacComparison(
+            original: "prefix\na much longer reference line\nend\n", context: context
+        )
+        defer { window.orderOut(nil) }
+        let revision = view.model.original.textRevision + 1
+        let delivery = try #require(view.comparisonDeliveryForTesting)
+        let ready = await delivery.values {
+            view.model.original.textRevision == revision && view.model.changeCount != nil
+        }
+        view.model.originalText = "x"
+        context.model.fontSizeDelta = 4
+        layoutMacComparison(view)
+        #expect(await ready.waitUntilValue(true))
+        await view.waitForPendingComparisonRefreshForTesting()
+        layoutMacComparison(view)
+        #expect(view.modifiedLayout.deletedViews[0]?.string == "x")
+        #expect(view.modifiedEditor.textView.string == source)
+    }
+
     @Test("Removing an active deleted block transfers focus to a visible editor")
     @MainActor
     func macComparisonTransfersDeletedFocusBeforeRemoval() async throws {
