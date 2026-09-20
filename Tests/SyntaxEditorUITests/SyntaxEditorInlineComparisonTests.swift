@@ -272,6 +272,40 @@ extension SyntaxEditorUITests {
         #expect(fixture.view.modifiedEditor.text == source)
     }
 
+    @Test("Focused reference blocks move with their paragraphs even outside the viewport")
+    @MainActor
+    func appKitInlineRepositionsFocusedOffscreenBlock() async throws {
+        let source = "start\nmiddle\nend\n"
+        let original = "start\n" + String(repeating: "wide deleted text ", count: 100)
+            + "\nmiddle\nselected reference\nend\n"
+        let fixture = try await makeInlineLayoutFixture(
+            original: original,
+            context: SyntaxEditorTestContext(text: source, language: .plainText, lineWrappingEnabled: true),
+            width: 900
+        )
+        defer { fixture.close() }
+        let editor = fixture.view.modifiedEditor
+        let deleted = try #require(fixture.view.inlineLayout.deletedViews[1])
+        let before = deleted.convert(deleted.bounds, to: editor.textView)
+        try #require(before.maxY < editor.contentView.bounds.maxY)
+        fixture.window.makeFirstResponder(deleted)
+        deleted.setSelectedRange(NSRange(location: 1, length: 4))
+        let selection = fixture.view.model.original.selectedRange
+
+        fixture.window.setContentSize(NSSize(width: 320, height: 420))
+        layoutInlineFixture(fixture.view)
+
+        let after = deleted.convert(deleted.bounds, to: editor.textView)
+        let end = try #require(editor.textView.rectsForCharacterRange((source as NSString).range(of: "end")).first)
+        #expect(after.minY > before.minY + 50)
+        #expect(abs(after.maxY + 4 - end.minY) < 1)
+        #expect(fixture.window.firstResponder === deleted)
+        #expect(deleted.selectedRange() == NSRange(location: 1, length: 4))
+        #expect(fixture.view.model.original.selectedRange == selection)
+        let hit = editor.textView.textContentView.hitTest(CGPoint(x: before.minX + 10, y: before.midY))
+        #expect(hit !== deleted && !(hit?.isDescendant(of: deleted) ?? false))
+    }
+
     @Test("Inline measurement never reenters the active parent viewport delegate")
     @MainActor
     func appKitInlineDoesNotReenterParentViewport() async throws {

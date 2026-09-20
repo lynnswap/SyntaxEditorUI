@@ -135,6 +135,13 @@ final class SyntaxEditorInlineComparisonLayout {
         return offsets.sorted()
     }
 
+    var focusedAnchorOffsets: [Int] {
+        guard let editor, editor.textStorage.length > 0 else { return [] }
+        return blocks.filter { hasFocus($0) }.map {
+            $0.isFooter ? editor.textStorage.length - 1 : $0.change.modifiedRange.location
+        }
+    }
+
     var additionalHeight: CGFloat { blocks.reduce(0) { $0 + $1.height } }
 
     var minimumTextWidth: CGFloat {
@@ -178,7 +185,7 @@ final class SyntaxEditorInlineComparisonLayout {
             }
         }
         for block in blocks where !visible.contains(block.index) {
-            guard let view = block.view, unsafe view.window?.firstResponder !== view else { continue }
+            guard let view = block.view, !hasFocus(block) else { continue }
             detach(view)
             block.view = nil
         }
@@ -216,7 +223,7 @@ final class SyntaxEditorInlineComparisonLayout {
         guard let editor, let originalEditor, let settings else { return false }
         let padding = editor.textContainer.lineFragmentPadding
         let frame = CGRect(x: 0, y: y, width: max(editor.textView.bounds.width, block.size.width + padding * 2), height: block.height)
-        guard frame.intersects(viewport) else { return false }
+        guard frame.intersects(viewport) || hasFocus(block) else { return false }
         visible.insert(block.index)
         let view: SyntaxEditorComparisonDeletedTextView
         if let existing = block.view {
@@ -269,6 +276,11 @@ final class SyntaxEditorInlineComparisonLayout {
                                 range: NSRange(location: clipped.location - range.location, length: clipped.length))
         }
         return result
+    }
+
+    private func hasFocus(_ block: Block) -> Bool {
+        guard let view = block.view else { return false }
+        return unsafe view.window?.firstResponder === view
     }
 
     private func detach(_ view: SyntaxEditorComparisonDeletedTextView) {

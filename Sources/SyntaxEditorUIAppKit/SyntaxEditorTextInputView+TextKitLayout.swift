@@ -163,8 +163,16 @@ extension SyntaxEditorTextInputView {
             }
             textLayoutManager.textViewportLayoutController.layoutViewport()
             if let inlineComparisonLayout {
-                let fragments = textContentView.subviews.compactMap {
+                var fragments = textContentView.subviews.compactMap {
                     ($0 as? TextLayoutFragmentView)?.layoutFragment
+                }
+                for offset in inlineComparisonLayout.focusedAnchorOffsets {
+                    guard let range = textRange(forUTF16Range: NSRange(location: offset, length: 1)) else { continue }
+                    textLayoutManager.ensureLayout(for: range)
+                    if let fragment = textLayoutManager.textLayoutFragment(for: range.location),
+                       !fragments.contains(where: { $0 === fragment }) {
+                        fragments.append(fragment)
+                    }
                 }
                 let viewport = visibleViewportBounds.insetBy(dx: 0, dy: -100)
                 let caret = storage.length == 0 ? caretRect(forUTF16Location: 0) : nil
