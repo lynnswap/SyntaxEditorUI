@@ -151,12 +151,18 @@ extension SyntaxEditorTextInputView {
         if let scrollView = enclosingScrollView,
            scrollView.contentView.bounds.width <= 0 || scrollView.contentView.bounds.height <= 0 { return }
         isLayingOutViewport = true
-        defer { isLayingOutViewport = false }
+        var changedGeometry = false
+        defer {
+            isLayingOutViewport = false
+            comparisonDidLayout?(changedGeometry)
+        }
+        comparisonWillLayout?()
 
         var remainingPasses = 5
         repeat {
             let changedEstimates = inlineComparisonLayout?.prepareForLayout() ?? false
             if changedEstimates || needsViewportLayout {
+                changedGeometry = true
                 needsViewportLayout = false
                 updateComparisonMargins()
                 updateDocumentFrameForCurrentText()
@@ -178,7 +184,10 @@ extension SyntaxEditorTextInputView {
                 let caret = storage.length == 0 ? caretRect(forUTF16Location: 0) : nil
                 if inlineComparisonLayout.layoutDeletedViews(
                     in: fragments, viewport: viewport, emptyDocumentCaretFrame: caret
-                ) { needsViewportLayout = true }
+                ) {
+                    changedGeometry = true
+                    needsViewportLayout = true
+                }
             }
             remainingPasses -= 1
         } while needsViewportLayout && remainingPasses > 0

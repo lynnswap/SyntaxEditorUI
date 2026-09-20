@@ -211,7 +211,7 @@ public final class SyntaxEditorComparisonView: NSView {
         let changes = model.changes ?? []
         let selection = model.selectedChangeIndex
         let selectionChanged = selection != displayedSelection
-        viewport.performUpdate {
+        viewport.performUpdate(appliesComparison: true) {
             let showsReference = identity.presentation == .sideBySide
             if originalEditor.isHidden == showsReference {
                 setReferenceVisible(showsReference)
