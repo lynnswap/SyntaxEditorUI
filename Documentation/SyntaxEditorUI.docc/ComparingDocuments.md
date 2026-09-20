@@ -124,7 +124,7 @@ See <doc:AppKitIntegration> and <doc:UIKitIntegration> for platform hosting and 
 - ``SyntaxEditorComparisonModel``
 - ``SyntaxEditorComparison``
 
-### Related guides
+## See Also
 
 - <doc:GettingStarted>
 - <doc:AppKitIntegration>
