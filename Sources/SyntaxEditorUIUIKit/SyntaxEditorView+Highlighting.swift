@@ -1176,6 +1176,7 @@ extension SyntaxEditorView {
                 storage.addAttribute(.paragraphStyle, value: update.style, range: update.range)
             }
         }
+        didUpdateSyntaxRendering?([textRange])
     }
 
     func resolvedSyntaxColor(_ color: UIColor) -> UIColor {

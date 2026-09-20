@@ -263,7 +263,9 @@ final class TextLayoutFragmentView: UIView {
             }
             context.restoreGState()
         }
-        layoutFragment.draw(at: .zero, in: context)
+        let origin = CGPoint(x: layoutFragment.layoutFragmentFrame.minX - frame.minX,
+                             y: layoutFragment.layoutFragmentFrame.minY - frame.minY)
+        layoutFragment.draw(at: origin, in: context)
     }
 }
 }
