@@ -11,6 +11,7 @@ final class SyntaxEditorComparisonTextLayout {
     private weak var editor: SyntaxEditorView?
     let side: Side
     private(set) var changes: [Change] = []
+    private var inlineRangeIndexes: [TextRangeIntersectionIndex] = []
     private var presentation: SyntaxEditorComparisonModel.Presentation = .changeMarkers
     private var selectedChangeIndex: Int?
     private var ruler: ComparisonRuler?
@@ -29,6 +30,12 @@ final class SyntaxEditorComparisonTextLayout {
 
     func update(changes: [Change], presentation: SyntaxEditorComparisonModel.Presentation, selectedChangeIndex: Int?) {
         self.changes = changes
+        inlineRangeIndexes = changes.map { change in
+            TextRangeIntersectionIndex(
+                ranges: change.inlineChanges.map { side == .original ? $0.originalRange : $0.modifiedRange },
+                utf16Length: sourceRange(change).upperBound
+            )
+        }
         self.presentation = presentation == .sideBySide ? .sideBySide : .changeMarkers
         updateSelectedChange(selectedChangeIndex)
     }
@@ -61,10 +68,7 @@ final class SyntaxEditorComparisonTextLayout {
         guard presentation != .changeMarkers else { return }
         let fragmentRange = editor.textSystem.utf16Range(for: fragment)
         for index in changeIndices(intersecting: fragmentRange) {
-            for inline in changes[index].inlineChanges {
-                let range = side == .original ? inline.originalRange : inline.modifiedRange
-                let intersection = NSIntersectionRange(range, fragmentRange)
-                guard intersection.length > 0 else { continue }
+            for intersection in inlineRangeIndexes[index].ranges(intersecting: fragmentRange) {
                 changeColor(at: index).withAlphaComponent(0.22).setFill()
                 for rect in TextLayoutGeometry.standardRects(
                     layoutManager: editor.layoutManager,
