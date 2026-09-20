@@ -253,6 +253,22 @@ extension SyntaxEditorUITests {
         #expect(current.selectedRange == selection)
     }
 
+    @Test("UIKit comparison accessibility includes visible reference deletions")
+    @MainActor
+    func iosInlineExposesDeletedTextToAccessibility() async throws {
+        let context = SyntaxEditorTestContext(text: "before\nafter\n", language: .plainText)
+        let (view, window) = try await makeIOSInlineComparison(original: "before\nremoved text\nafter\n", context: context)
+        defer { closeIOSInlineComparison(window) }
+        let deleted = try #require(view.inlineLayout.deletedViews[0])
+        let inlineElements = try #require(view.accessibilityElements)
+        #expect(inlineElements.contains { $0 as? UIView === deleted })
+        #expect(inlineElements.contains { $0 as? UIView === view.modifiedEditor })
+        try await changeIOSInlineComparison(view, to: .sideBySide)
+        let sideElements = try #require(view.accessibilityElements)
+        #expect(sideElements.contains { $0 as? UIView === view.originalEditor })
+        #expect(!sideElements.contains { $0 as? UIView === deleted })
+    }
+
     @MainActor
     private func iosInlineLineFrame(_ index: Int, in editor: SyntaxEditorView) -> CGRect? {
         let offset = editor.lineMetrics.lineOffsets.lineStartOffset(at: index)

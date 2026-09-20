@@ -2,7 +2,7 @@ import SyntaxEditorUI
 
 struct MiniLaunchConfiguration {
     static var current: MiniLaunchConfiguration {
-        MiniLaunchConfiguration(initialPreset: .javascript)
+        MiniLaunchConfiguration(initialPreset: .comparison)
     }
 
     let initialPresetID: MiniPreviewPreset.ID

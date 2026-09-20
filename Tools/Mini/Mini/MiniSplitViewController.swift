@@ -9,8 +9,8 @@ final class MiniSplitViewController: UISplitViewController {
     private let model: MiniEditorSession
     private let presetListViewController: MiniPresetListViewController
     private var modelObservation: PortableObservationTracking.Token?
-    private var editorViewController: SyntaxEditorViewController?
-    private var detailViewController: MiniEditorContainerViewController?
+    private var editorViewController: SyntaxEditorComparisonViewController?
+    private var detailViewController: MiniComparisonViewController?
 
     init(model: MiniEditorSession) {
         self.model = model
@@ -43,27 +43,32 @@ final class MiniSplitViewController: UISplitViewController {
         modelObservation = withPortableContinuousObservation { [weak self] _ in
             guard let self else { return }
 
-            let editorModel = model.editorModel
+            let comparisonModel = model.comparisonModel
             let title = model.currentPreset.title
-            renderDetail(editorModel: editorModel, title: title)
+            renderDetail(comparisonModel: comparisonModel, title: title)
         }
     }
 
-    private func renderDetail(editorModel: SyntaxEditorModel, title: String) {
+    private func renderDetail(comparisonModel: SyntaxEditorComparisonModel, title: String) {
         if let editorViewController {
-            editorViewController.update(model: editorModel)
+            editorViewController.update(model: comparisonModel)
             detailViewController?.title = title
             return
         }
 
-        let editorViewController = SyntaxEditorViewController(
-            model: editorModel
+        let editorViewController = SyntaxEditorComparisonViewController(
+            model: comparisonModel
         )
-        let detailViewController = MiniEditorContainerViewController(
+        let detailViewController = MiniComparisonViewController(
+            model: model,
             editorViewController: editorViewController
         )
         detailViewController.title = title
-        detailViewController.navigationItem.additionalOverflowItems = makeOverflowItems()
+        detailViewController.navigationItem.rightBarButtonItem = UIBarButtonItem(
+            image: UIImage(systemName: "ellipsis.circle"), primaryAction: nil,
+            menu: UIMenu(children: [makeOverflowItems()])
+        )
+        detailViewController.navigationItem.rightBarButtonItem?.accessibilityLabel = "Editor Options"
 
         let navigationController = UINavigationController(rootViewController: detailViewController)
         self.editorViewController = editorViewController
@@ -115,38 +120,6 @@ final class MiniSplitViewController: UISplitViewController {
     }
 }
 
-@MainActor
-private final class MiniEditorContainerViewController: UIViewController {
-    private let editorViewController: SyntaxEditorViewController
-
-    init(editorViewController: SyntaxEditorViewController) {
-        self.editorViewController = editorViewController
-        super.init(nibName: nil, bundle: nil)
-    }
-
-    @available(*, unavailable)
-    required init?(coder: NSCoder) {
-        nil
-    }
-
-    override func viewDidLoad() {
-        super.viewDidLoad()
-
-        addChild(editorViewController)
-        let editorView = editorViewController.view!
-        editorView.translatesAutoresizingMaskIntoConstraints = false
-        view.addSubview(editorView)
-
-        let safeArea = view.safeAreaLayoutGuide
-        NSLayoutConstraint.activate([
-            editorView.leadingAnchor.constraint(equalTo: safeArea.leadingAnchor),
-            editorView.trailingAnchor.constraint(equalTo: safeArea.trailingAnchor),
-            editorView.topAnchor.constraint(equalTo: safeArea.topAnchor),
-            editorView.bottomAnchor.constraint(equalTo: safeArea.bottomAnchor),
-        ])
-        editorViewController.didMove(toParent: self)
-    }
-}
 #elseif canImport(AppKit)
 import AppKit
 
@@ -155,8 +128,9 @@ final class MiniSplitViewController: NSSplitViewController {
     private let model: MiniEditorSession
     private let presetListViewController: MiniPresetListViewController
     private var modelObservation: PortableObservationTracking.Token?
-    private var editorViewController: SyntaxEditorViewController?
+    private var editorViewController: SyntaxEditorComparisonViewController?
     private var detailSplitViewItem: NSSplitViewItem?
+    private var detailViewController: MiniComparisonViewController?
 
     init(model: MiniEditorSession) {
         self.model = model
@@ -197,16 +171,16 @@ final class MiniSplitViewController: NSSplitViewController {
         modelObservation = withPortableContinuousObservation { [weak self] _ in
             guard let self else { return }
 
-            let editorModel = model.editorModel
+            let comparisonModel = model.comparisonModel
             let title = model.currentPreset.title
-            renderDetail(editorModel: editorModel, title: title)
+            renderDetail(comparisonModel: comparisonModel, title: title)
         }
     }
 
-    private func renderDetail(editorModel: SyntaxEditorModel, title: String) {
+    private func renderDetail(comparisonModel: SyntaxEditorComparisonModel, title: String) {
         if let editorViewController {
-            editorViewController.update(model: editorModel)
-            editorViewController.title = title
+            editorViewController.update(model: comparisonModel)
+            detailViewController?.title = title
             return
         }
 
@@ -214,13 +188,15 @@ final class MiniSplitViewController: NSSplitViewController {
             removeSplitViewItem(detailSplitViewItem)
         }
 
-        let editorViewController = SyntaxEditorViewController(
-            model: editorModel
+        let editorViewController = SyntaxEditorComparisonViewController(
+            model: comparisonModel
         )
         editorViewController.title = title
-        editorViewController.scrollView.automaticallyAdjustsContentInsets = true
+        editorViewController.editorView.modifiedEditor.automaticallyAdjustsContentInsets = true
 
-        let detailItem = NSSplitViewItem(viewController: editorViewController)
+        let detailViewController = MiniComparisonViewController(model: model, editorViewController: editorViewController)
+        detailViewController.title = title
+        let detailItem = NSSplitViewItem(viewController: detailViewController)
         detailItem.minimumThickness = 320
         if #available(macOS 26.0, *) {
             detailItem.automaticallyAdjustsSafeAreaInsets = true
@@ -229,6 +205,7 @@ final class MiniSplitViewController: NSSplitViewController {
 
         self.editorViewController = editorViewController
         self.detailSplitViewItem = detailItem
+        self.detailViewController = detailViewController
     }
 }
 #endif

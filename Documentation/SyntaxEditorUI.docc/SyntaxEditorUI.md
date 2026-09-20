@@ -1,6 +1,6 @@
 # ``SyntaxEditorUI``
 
-Build editable code and plain-text views with SwiftUI, UIKit, and AppKit.
+Build editable code and plain-text views, including document comparisons, with SwiftUI, UIKit, and AppKit.
 
 ## Overview
 
@@ -20,17 +20,27 @@ The package requires Swift 6.3 or later, with iOS 18+, Mac Catalyst 18+, visionO
 - ``SyntaxEditorModel``
 - ``SyntaxEditorTextChange``
 
+### Document comparison
+
+- <doc:ComparingDocuments>
+- ``SyntaxEditorComparisonModel``
+- ``SyntaxEditorComparison``
+
 ### UIKit
 
 - <doc:UIKitIntegration>
 - ``SyntaxEditorView-6lnwr``
 - ``SyntaxEditorViewController-j7tv``
+- ``SyntaxEditorComparisonView-3ze46``
+- ``SyntaxEditorComparisonViewController-69rtq``
 
 ### AppKit
 
 - <doc:AppKitIntegration>
 - ``SyntaxEditorView-77bw3``
 - ``SyntaxEditorViewController-16tjt``
+- ``SyntaxEditorComparisonView-2w0hh``
+- ``SyntaxEditorComparisonViewController-5esrd``
 
 ### Languages and appearance
 
