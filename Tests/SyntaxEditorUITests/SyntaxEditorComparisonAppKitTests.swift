@@ -364,6 +364,130 @@ extension SyntaxEditorUITests {
         #expect(abs(originalY - currentOriginalSpan.midY) <= 2)
     }
 
+    @Test("Inline geometry changes retain the visible common line")
+    @MainActor
+    func macComparisonPreservesAnchorAcrossInlineGeometryChanges() async throws {
+        for setting in ["width", "font", "wrapping"] {
+            let common = (0..<120).map { "common \($0)\n" }.joined()
+            let context = SyntaxEditorTestContext(text: "start\n" + common, language: .plainText, lineWrappingEnabled: true)
+            let original = "start\n" + String(repeating: "deleted text ", count: 100) + "\n" + common
+            let (view, window) = try await makeMacComparison(original: original, context: context, width: 900)
+            defer { window.orderOut(nil) }
+            let editor = view.modifiedEditor
+            let line = try #require(view.modifiedLayout.lineFrame(50))
+            editor.contentView.scroll(to: NSPoint(x: 0, y: line.minY))
+            editor.reflectScrolledClipView(editor.contentView)
+            layoutMacComparison(view)
+            let beforeY = editor.textView.convert(editor.contentView.bounds.origin, from: editor.contentView).y
+            let before = try #require(view.modifiedLayout.logicalPosition(atY: beforeY))
+            if setting == "width" {
+                window.setContentSize(NSSize(width: 400, height: 420))
+            } else {
+                let editorDelivery = try #require(editor.modelConfigurationDeliveryForTesting)
+                let comparisonDelivery = try #require(view.comparisonConfigurationDeliveryForTesting)
+                if setting == "font" {
+                    let expected = editor.resolvedBaseFont(fontSizeDelta: 4).pointSize
+                    let font = await editorDelivery.values { editor.textView.font?.pointSize }
+                    let configuration = await comparisonDelivery.values { context.model.fontSizeDelta }
+                    context.model.fontSizeDelta = 4
+                    #expect(await font.waitUntilValue(expected))
+                    #expect(await configuration.waitUntilValue(4))
+                } else {
+                    let scrolling = await editorDelivery.values { editor.hasHorizontalScroller }
+                    let configuration = await comparisonDelivery.values { context.model.lineWrappingEnabled }
+                    context.model.lineWrappingEnabled = false
+                    #expect(await scrolling.waitUntilValue(true))
+                    #expect(await configuration.waitUntilValue(false))
+                }
+                await view.waitForPendingComparisonRefreshForTesting()
+            }
+            layoutMacComparison(view)
+            let afterY = editor.textView.convert(editor.contentView.bounds.origin, from: editor.contentView).y
+            let after = try #require(view.modifiedLayout.logicalPosition(atY: afterY))
+            #expect(abs(before - after) < 0.2, "setting: \(setting), before: \(before), after: \(after)")
+        }
+    }
+
+    @Test("Changing font size inside an inline deletion preserves its visible reference line and selection")
+    @MainActor
+    func macComparisonPreservesDeletedAnchorAcrossFontChange() async throws {
+        let prefix = "start\n"
+        let removed = (0..<300).map { "removed line \($0)\n" }.joined()
+        let source = prefix + "end\n"
+        let context = SyntaxEditorTestContext(text: source, language: .plainText, lineWrappingEnabled: true)
+        let (view, window) = try await makeMacComparison(original: prefix + removed + "end\n", context: context)
+        defer { window.orderOut(nil) }
+        let editor = view.modifiedEditor
+        let initial = try #require(view.modifiedLayout.deletedViews[0])
+        let blockFrame = initial.convert(initial.bounds, to: editor.textView)
+        editor.contentView.scroll(to: NSPoint(x: 0, y: blockFrame.midY))
+        editor.reflectScrolledClipView(editor.contentView)
+        layoutMacComparison(view)
+        let deleted = try #require(view.modifiedLayout.deletedViews[0])
+        func visibleReferenceLine(in textView: NSTextView) -> Int {
+            var point = textView.convert(editor.contentView.bounds.origin, from: editor.contentView)
+            point.x = textView.textContainerOrigin.x + 1
+            let offset = textView.characterIndexForInsertion(at: point)
+            return prefix.utf16.count + (textView.string as NSString).lineRange(for: NSRange(location: offset, length: 0)).location
+        }
+        let localLine = visibleReferenceLine(in: deleted) - prefix.utf16.count
+        window.makeFirstResponder(deleted)
+        deleted.setSelectedRange(NSRange(location: localLine + 2, length: 5))
+        layoutMacComparison(view)
+        let before = visibleReferenceLine(in: deleted)
+        try #require(before > prefix.utf16.count && before < prefix.utf16.count + removed.utf16.count)
+        let selection = deleted.selectedRange()
+        let referenceSelection = view.model.original.selectedRange
+        let editorDelivery = try #require(editor.modelConfigurationDeliveryForTesting)
+        let referenceDelivery = try #require(view.originalEditor.modelConfigurationDeliveryForTesting)
+        let comparisonDelivery = try #require(view.comparisonConfigurationDeliveryForTesting)
+        let expected = editor.resolvedBaseFont(fontSizeDelta: 4).pointSize
+        let currentFont = await editorDelivery.values { editor.textView.font?.pointSize }
+        let referenceFont = await referenceDelivery.values { view.originalEditor.textView.font?.pointSize }
+        let configuration = await comparisonDelivery.values { context.model.fontSizeDelta }
+        context.model.fontSizeDelta = 4
+        #expect(await currentFont.waitUntilValue(expected))
+        #expect(await referenceFont.waitUntilValue(expected))
+        #expect(await configuration.waitUntilValue(4))
+        await view.waitForPendingComparisonRefreshForTesting()
+        layoutMacComparison(view)
+        let updated = try #require(view.modifiedLayout.deletedViews[0])
+        #expect(visibleReferenceLine(in: updated) == before)
+        #expect(updated === deleted)
+        #expect(updated.selectedRange() == selection)
+        #expect(view.model.original.selectedRange == referenceSelection)
+        #expect(window.firstResponder === updated)
+        #expect(context.model.text == source)
+    }
+
+    @Test("Completed comparisons resynchronize visible panes after edits above the viewport")
+    @MainActor
+    func macComparisonResynchronizesAfterComparisonRefresh() async throws {
+        let source = (0..<140).map { "common \($0)\n" }.joined()
+        let context = SyntaxEditorTestContext(text: source, language: .plainText)
+        let (view, window) = try await makeMacComparison(original: source, context: context)
+        defer { window.orderOut(nil) }
+        try await changeMacComparison(view, to: .sideBySide)
+        let editor = view.modifiedEditor
+        let line = try #require(view.modifiedLayout.lineFrame(70))
+        editor.contentView.scroll(to: NSPoint(x: 0, y: line.minY))
+        editor.reflectScrolledClipView(editor.contentView)
+        let revision = context.model.textRevision + 1
+        let delivery = try #require(view.comparisonDeliveryForTesting)
+        let ready = await delivery.values {
+            context.model.textRevision == revision && view.model.changeCount != nil
+        }
+        let retained = (0..<138).map { "common \($0)\n" }.joined()
+        context.model.text = "inserted one\ninserted two\n" + retained
+        #expect(await ready.waitUntilValue(true))
+        await view.waitForPendingComparisonRefreshForTesting()
+        let currentY = editor.textView.convert(editor.contentView.bounds.origin, from: editor.contentView).y
+        let referenceY = view.originalEditor.textView.convert(view.originalEditor.contentView.bounds.origin, from: view.originalEditor.contentView).y
+        let currentLine = try #require(view.modifiedLayout.logicalPosition(atY: currentY))
+        let referenceLine = try #require(view.originalLayout.logicalPosition(atY: referenceY))
+        #expect(abs(currentLine - 2 - referenceLine) < 0.2)
+    }
+
     @Test("EOF changes have correctly colored boundary markers")
     @MainActor
     func macComparisonEOFChangesHaveMarkers() async throws {

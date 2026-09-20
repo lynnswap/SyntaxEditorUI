@@ -24,6 +24,7 @@ final class SyntaxEditorComparisonTextLayout {
     private var settingsWrapping = false
     private var referenceStyleGeneration = -1
     private var ruler: ComparisonRuler?
+    private var visibleAnchor: VisibleAnchor?
 
     var lineOffsets: LineOffsetTable { editor!.textView.lineMetrics.lineOffsets }
     var additionalHeight: CGFloat { blocks.values.reduce(0) { $0 + $1.height } }
@@ -46,6 +47,7 @@ final class SyntaxEditorComparisonTextLayout {
     func update(changes: [Change], presentation: SyntaxEditorComparisonModel.Presentation, selectedChangeIndex: Int?) {
         guard let editor else { return }
         let anchor = captureScrollAnchor()
+        visibleAnchor = nil
         for block in blocks.values { block.view?.removeFromSuperview() }
         blocks.removeAll()
         self.changes = changes
@@ -87,11 +89,12 @@ final class SyntaxEditorComparisonTextLayout {
 
     func refreshTextSettings() {
         guard let editor else { return }
-        let wraps = editor.model.lineWrappingEnabled
+        let wraps = !editor.textView.isHorizontallyResizable
         let containerWidth = wraps ? editor.textContainer.size.width : editor.contentSize.width
         let width = max(1, containerWidth - editor.textContainer.lineFragmentPadding * 2)
-        let font = editor.resolvedBaseFont()
+        let font = editor.textView.font ?? editor.resolvedBaseFont()
         let geometryChanged = settingsWidth != width || settingsFont != font || settingsWrapping != wraps
+        let anchor = geometryChanged ? anchorBeforeGeometryChange() : nil
         if geometryChanged {
             settingsWidth = width
             settingsFont = font
@@ -123,6 +126,7 @@ final class SyntaxEditorComparisonTextLayout {
         if geometryChanged {
             rebuildMargins()
             editor.textView.invalidateTextLayout()
+            restoreScrollAnchor(anchor)
         } else if stylesChanged {
             editor.textView.needsLayout = true
         }
@@ -170,8 +174,8 @@ final class SyntaxEditorComparisonTextLayout {
         }
         isLayingOut = true
         defer { isLayingOut = false }
+        let anchor = anchorBeforeGeometryChange()
         refreshTextSettings()
-        let anchor = captureScrollAnchor()
         let viewport = editor.textView.convert(editor.contentView.bounds, from: editor.contentView).insetBy(dx: 0, dy: -100)
         var visible: Set<Int> = []
         var changedSize = false
@@ -217,6 +221,14 @@ final class SyntaxEditorComparisonTextLayout {
             editor.textView.needsLayout = true
         }
         ruler?.needsDisplay = true
+        if let anchor = captureScrollAnchor(), let comparison {
+            visibleAnchor = VisibleAnchor(
+                documentRevision: editor.lastAppliedDocumentRevision,
+                referenceRevision: comparison.model.original.textRevision,
+                y: editor.contentView.bounds.minY,
+                anchor: anchor
+            )
+        }
     }
 
     private func place(_ block: DeletedBlock, at y: CGFloat, viewport: CGRect, visible: inout Set<Int>) -> Bool {
@@ -401,6 +413,27 @@ final class SyntaxEditorComparisonTextLayout {
             $0 as? SyntaxEditorTextInputView.TextLayoutFragmentView
         }.filter { $0.layoutFragment.layoutFragmentFrame.intersects(editor.textView.currentViewportBounds) }
             .sorted { $0.layoutFragment.layoutFragmentFrame.minY < $1.layoutFragment.layoutFragmentFrame.minY }
+    }
+
+    private struct VisibleAnchor {
+        let documentRevision: Int
+        let referenceRevision: Int
+        let y: CGFloat
+        let anchor: ScrollAnchor
+    }
+
+    private func anchorBeforeGeometryChange() -> ScrollAnchor? {
+        // Native font layout can already have changed before its comparison
+        // margins are refreshed. Reuse the last displayed text position only
+        // while its document and viewport still identify the same content.
+        if let editor, let comparison, let visibleAnchor,
+           visibleAnchor.documentRevision == editor.lastAppliedDocumentRevision,
+           visibleAnchor.documentRevision == editor.model.textRevision,
+           visibleAnchor.referenceRevision == comparison.model.original.textRevision,
+           visibleAnchor.y == editor.contentView.bounds.minY {
+            return visibleAnchor.anchor
+        }
+        return captureScrollAnchor()
     }
 
     private enum ScrollAnchor {

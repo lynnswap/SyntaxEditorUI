@@ -34,6 +34,7 @@ public final class SyntaxEditorComparisonView: NSView {
     private var dividerFraction: CGFloat = 0.5
 
     var comparisonDeliveryForTesting: PortableObservationTracking.Token? { comparisonObservation }
+    var comparisonConfigurationDeliveryForTesting: PortableObservationTracking.Token? { configurationObservation }
 
     func waitForPendingComparisonRefreshForTesting() async {
         while let task = refreshTask { await task.value }
@@ -268,9 +269,9 @@ public final class SyntaxEditorComparisonView: NSView {
             if showsReference {
                 originalLayout.revealChange(at: selection)
             }
-        } else if referenceVisibilityChanged, showsReference {
+        } else if showsReference, referenceVisibilityChanged || contentChanged {
+            needsLayout = true
             layoutSubtreeIfNeeded()
-            synchronizeScroll(from: .modified)
         }
     }
 
