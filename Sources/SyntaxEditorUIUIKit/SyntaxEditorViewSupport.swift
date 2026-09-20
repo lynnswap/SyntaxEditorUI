@@ -206,6 +206,7 @@ final class TextContentView: UIView {
 }
 
 final class TextLayoutFragmentView: UIView {
+    weak var editor: SyntaxEditorView?
     let layoutFragment: NSTextLayoutFragment
     var findHighlightRects: [CGRect] = []
     var findHighlightColor: CGColor?
@@ -231,6 +232,10 @@ final class TextLayoutFragmentView: UIView {
         guard let context = UIGraphicsGetCurrentContext() else {
             return
         }
+
+        editor?.comparisonLayout?.drawBackground(
+            for: layoutFragment, surfaceOrigin: frame.origin, in: bounds, dirtyRect: rect
+        )
 
         if let findHighlightColor, !findHighlightRects.isEmpty {
             context.saveGState()

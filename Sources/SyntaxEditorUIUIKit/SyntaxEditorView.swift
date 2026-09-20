@@ -29,6 +29,8 @@ public final class SyntaxEditorView: UIScrollView, UITextInput, UITextInputTrait
     let guardedUndoManager = SyntaxEditorReadOnlyGuardedUndoManager()
     let textSystem = EditorTextSystem()
     let textContentView = SyntaxEditorView.TextContentView()
+    weak var comparisonLayout: SyntaxEditorComparisonTextLayout?
+    var didChangeComparisonViewport: (() -> Void)?
     let editableTextInteraction = UITextInteraction(for: .editable)
     let nonEditableTextInteraction = UITextInteraction(for: .nonEditable)
     var findCoordinator: SyntaxEditorFindCoordinator?
