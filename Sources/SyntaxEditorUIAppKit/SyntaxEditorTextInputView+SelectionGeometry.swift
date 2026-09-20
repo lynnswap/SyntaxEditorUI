@@ -291,7 +291,7 @@ extension SyntaxEditorTextInputView {
         return location >= visibleRange.location && location <= visibleRange.upperBound
     }
 
-    private func caretRect(forUTF16Location location: Int) -> CGRect? {
+    func caretRect(forUTF16Location location: Int) -> CGRect? {
         caretGeometryQueryCountForTesting += 1
         guard let textLocation = textLocation(forUTF16Offset: location) else { return nil }
         let textRange = NSTextRange(location: textLocation)

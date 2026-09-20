@@ -8,6 +8,10 @@ final class SyntaxEditorTextInputView: NSView, @preconcurrency NSTextInputClient
     let textSystem: EditorTextSystem
     let textContentView = SyntaxEditorTextInputView.TextContentView()
     weak var comparisonLayout: SyntaxEditorComparisonTextLayout?
+    weak var inlineComparisonLayout: SyntaxEditorInlineComparisonLayout?
+    var isLayingOutViewport = false
+    var needsViewportLayout = false
+    let comparisonMarginFragments = NSHashTable<TextLayoutFragment>.weakObjects()
     let textFinder = NSTextFinder()
     let insertionIndicator = NSTextInsertionIndicator(frame: .zero)
     private var incrementalMatchRangesObservation: NSKeyValueObservation?

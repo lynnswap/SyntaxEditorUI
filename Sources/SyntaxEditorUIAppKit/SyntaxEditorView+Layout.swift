@@ -78,10 +78,14 @@
     }
 
     func updateRenderingBaseForeground(from base: [NSAttributedString.Key: Any]) {
+      let previousGeneration = textSystem.styleStore.generation
       textSystem.styleStore.updateBaseForeground(
         base[.foregroundColor] as? NSColor,
         textLength: textStorage.length
       )
+      if textSystem.styleStore.generation != previousGeneration, textStorage.length > 0 {
+        didUpdateSyntaxRendering?([NSRange(location: 0, length: textStorage.length)])
+      }
     }
 
     func baseAttributes() -> [NSAttributedString.Key: Any] {
@@ -293,7 +297,9 @@
         lineWrappingEnabled: lineWrappingEnabled,
         lineHeight: lineHeight,
         columnWidth: estimatedColumnWidth,
-        lineFragmentPadding: textContainer.lineFragmentPadding
+        lineFragmentPadding: textContainer.lineFragmentPadding,
+        additionalHeight: textView.inlineComparisonLayout?.additionalHeight ?? 0,
+        minimumTextWidth: textView.inlineComparisonLayout?.minimumTextWidth ?? 0
       )
     }
 
