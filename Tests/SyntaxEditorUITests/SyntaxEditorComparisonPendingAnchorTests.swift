@@ -164,6 +164,31 @@ extension SyntaxEditorUITests {
         #expect(abs(ready - before - 1) < 0.2)
     }
 
+    @Test("Switching between inline and side-by-side retains the viewed reference line")
+    @MainActor
+    func macComparisonPreservesReferenceLineAcrossPresentationChanges() async throws {
+        let fixture = try await makePendingAnchorFixture()
+        defer { fixture.window.orderOut(nil); Task { await fixture.gate.releaseAll() } }
+        let view = fixture.view
+        let before = try #require(pendingAnchorVisibleReferenceLine(view))
+        let delivery = try #require(view.comparisonDeliveryForTesting)
+        let presentations = await delivery.values { view.model.presentation }
+        view.model.presentation = .sideBySide
+        #expect(await presentations.waitUntilValue(.sideBySide))
+        await view.waitForPendingComparisonRefreshForTesting()
+        let reference = view.originalEditor
+        let y = reference.textView.convert(reference.contentView.bounds.origin, from: reference.contentView).y
+        let offset = reference.textView.characterIndex(at: CGPoint(x: reference.textContainer.lineFragmentPadding + 1, y: y))
+        let visible = (reference.text as NSString).lineRange(for: NSRange(location: offset, length: 0)).location
+        #expect(visible == before)
+
+        view.model.presentation = .inline
+        #expect(await presentations.waitUntilValue(.inline))
+        await view.waitForPendingComparisonRefreshForTesting()
+        layoutPendingAnchorComparison(view)
+        #expect(pendingAnchorVisibleReferenceLine(view) == before)
+    }
+
     @MainActor
     private func makePendingAnchorFixture() async throws -> PendingAnchorFixture {
         let prefix = (0..<20).map { "header \($0)\n" }.joined()

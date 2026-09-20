@@ -63,23 +63,30 @@ final class SyntaxEditorComparisonViewport: NSObject {
         isAdjusting = true
         defer { isAdjusting = false }
         let model = comparison.model
-        let modified = pendingComparisonAnchor ?? preferredAnchor(.modified)
+        let priorPresentation = comparison.displayedPresentation
+        var modified = pendingComparisonAnchor ?? preferredAnchor(.modified)
         let original = preferredAnchor(.original)
-        if model.presentation == .inline, model.changes == nil, pendingComparisonAnchor == nil {
+        if appliesComparison, model.presentation == .inline, priorPresentation == .sideBySide, driver == .original,
+           case let .document(offset, delta, revision, _) = original,
+           model.changes?.contains(where: { NSLocationInRange(offset, $0.originalRange) }) == true {
+            modified = .reference(.init(offset: offset, delta: delta, revision: revision))
+        }
+        if priorPresentation == .inline, model.changes == nil, pendingComparisonAnchor == nil {
             pendingComparisonAnchor = modified
         }
         update()
         guard comparison.model === model else { recordAll(); return }
-        if model.presentation != .sideBySide { driver = .modified }
+        let presentation = comparison.displayedPresentation
+        if presentation != .sideBySide { driver = .modified }
         comparison.modifiedEditor.textView.layoutVisibleViewport()
-        if model.presentation == .sideBySide { comparison.originalEditor.textView.layoutVisibleViewport() }
+        if presentation == .sideBySide { comparison.originalEditor.textView.layoutVisibleViewport() }
+        if presentation == .sideBySide, let original { restore(original, in: .original) }
         if let modified {
             let current = rebased(modified, in: comparison.modifiedEditor)
             restore(current, in: .modified)
             if pendingComparisonAnchor != nil { pendingComparisonAnchor = current }
         }
-        if model.presentation == .sideBySide, let original { restore(original, in: .original) }
-        if (appliesComparison && model.changes != nil) || model.presentation != .inline { pendingComparisonAnchor = nil }
+        if (appliesComparison && model.changes != nil) || presentation != .inline { pendingComparisonAnchor = nil }
         recordAll()
     }
 
@@ -99,14 +106,14 @@ final class SyntaxEditorComparisonViewport: NSObject {
             pendingReveal = nil
             let change = changes[index]
             let movedModified = reveal(change.modifiedRange, index: index, in: comparison.modifiedEditor, isModified: true)
-            let movedOriginal = comparison.model.presentation == .sideBySide
+            let movedOriginal = comparison.displayedPresentation == .sideBySide
                 && reveal(change.originalRange, index: index, in: comparison.originalEditor, isModified: false)
             if movedOriginal, !movedModified || change.modifiedRange.length == 0 { driver = .original }
             else if movedModified { driver = .modified }
             recordAll()
             return
         }
-        if comparison.model.presentation == .sideBySide { synchronize(from: driver) }
+        if comparison.displayedPresentation == .sideBySide { synchronize(from: driver) }
         recordAll()
     }
 
@@ -124,7 +131,7 @@ final class SyntaxEditorComparisonViewport: NSObject {
         if let prior = geometries[side], prior != geometry(editor) { return }
         snapshots[side] = nil
         if side == .modified { pendingComparisonAnchor = nil }
-        if comparison.model.presentation == .sideBySide {
+        if comparison.displayedPresentation == .sideBySide {
             driver = side
             isAdjusting = true
             defer { isAdjusting = false }
@@ -197,7 +204,7 @@ final class SyntaxEditorComparisonViewport: NSObject {
 
     private func recordAll() {
         record(.modified)
-        if comparison?.model.presentation == .sideBySide { record(.original) }
+        if comparison?.displayedPresentation == .sideBySide { record(.original) }
     }
 
     private func restore(_ anchor: Anchor, in side: Side) {
@@ -214,14 +221,13 @@ final class SyntaxEditorComparisonViewport: NSObject {
                 y = frame(NSRange(location: projected, length: 0), in: editor).map { $0.minY + delta }
             case let .reference(position):
                 guard position.revision == comparison.model.original.textRevision else { return }
-                if comparison.model.presentation == .sideBySide {
-                    if let rect = frame(NSRange(location: position.offset, length: 0), in: comparison.originalEditor) {
-                        scroll(comparison.originalEditor, to: rect.minY + position.delta)
-                        driver = .original
-                    }
+                if comparison.displayedPresentation == .sideBySide {
+                    restore(.document(offset: position.offset, delta: position.delta,
+                                      revision: position.revision, source: comparison.model.originalText), in: .original)
+                    driver = .original
                     return
                 }
-                guard comparison.model.presentation == .inline else { return }
+                guard comparison.displayedPresentation == .inline else { return }
                 if comparison.inlineLayout.referenceY(for: position) == nil,
                    let index = comparison.inlineLayout.changeIndex(containingOriginalOffset: position.offset),
                    let changes = comparison.model.changes, changes.indices.contains(index) {
@@ -305,9 +311,9 @@ final class SyntaxEditorComparisonViewport: NSObject {
     private func reveal(_ range: NSRange, index: Int, in editor: SyntaxEditorView, isModified: Bool) -> Bool {
         let before = editor.contentView.bounds.origin
         func displayedFrame() -> CGRect? {
-            let inlineFrame = isModified && comparison?.model.presentation == .inline
+            let inlineFrame = isModified && comparison?.displayedPresentation == .inline
                 ? comparison?.inlineLayout.frame(forChangeAt: index) : nil
-            if range.length == 0, isModified, comparison?.model.presentation == .inline {
+            if range.length == 0, isModified, comparison?.displayedPresentation == .inline {
                 return inlineFrame
             }
             guard let text = frame(range, in: editor) else { return inlineFrame }

@@ -50,7 +50,8 @@ public final class SyntaxEditorComparisonView: NSView {
 
     var comparisonDeliveryForTesting: PortableObservationTracking.Token? { comparisonObservation }
     var comparisonConfigurationDeliveryForTesting: PortableObservationTracking.Token? { configurationObservation }
-    var displayedPresentationForTesting: SyntaxEditorComparisonModel.Presentation? { displayedContent?.presentation }
+    var displayedPresentation: SyntaxEditorComparisonModel.Presentation { displayedContent?.presentation ?? model.presentation }
+    var displayedPresentationForTesting: SyntaxEditorComparisonModel.Presentation { displayedPresentation }
 
     func waitForPendingComparisonRefreshForTesting(until isReady: () -> Bool = { true }) async {
         while refreshTask != nil || displayedContent != currentContentIdentity
