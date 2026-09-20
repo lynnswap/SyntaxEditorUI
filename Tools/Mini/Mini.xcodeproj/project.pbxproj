@@ -7,14 +7,13 @@
 	objects = {
 
 /* Begin PBXBuildFile section */
-		F0B200000000000000000006 /* Reference.m in Sources */ = {isa = PBXBuildFile; fileRef = F0B200000000000000000003 /* Reference.m */; };
 		F0A200000000000000000001 /* SyntaxEditorUI in Frameworks */ = {isa = PBXBuildFile; productRef = F0A200000000000000000003 /* SyntaxEditorUI */; };
+		F0B200000000000000000006 /* Mini/ReferenceSamples/Reference.m in Sources */ = {isa = PBXBuildFile; fileRef = F0B200000000000000000003 /* Mini/ReferenceSamples/Reference.m */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXFileReference section */
 		AB5455732F73E81C002604FB /* SyntaxPreview.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = SyntaxPreview.app; sourceTree = BUILT_PRODUCTS_DIR; };
-		F0B200000000000000000001 /* Reference.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; path = Mini/ReferenceSamples/Reference.h; sourceTree = SOURCE_ROOT; };
-		F0B200000000000000000003 /* Reference.m */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.objc; path = Mini/ReferenceSamples/Reference.m; sourceTree = SOURCE_ROOT; };
+		F0B200000000000000000003 /* Mini/ReferenceSamples/Reference.m */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.objc; path = Mini/ReferenceSamples/Reference.m; sourceTree = SOURCE_ROOT; };
 /* End PBXFileReference section */
 
 /* Begin PBXFileSystemSynchronizedBuildFileExceptionSet section */
@@ -55,11 +54,20 @@
 /* End PBXFrameworksBuildPhase section */
 
 /* Begin PBXGroup section */
+		AB33EB71305F929D00C96A80 /* Recovered References */ = {
+			isa = PBXGroup;
+			children = (
+				F0B200000000000000000003 /* Mini/ReferenceSamples/Reference.m */,
+			);
+			name = "Recovered References";
+			sourceTree = "<group>";
+		};
 		AB54556A2F73E81C002604FB = {
 			isa = PBXGroup;
 			children = (
 				AB5455752F73E81C002604FB /* Mini */,
 				AB5455742F73E81C002604FB /* Products */,
+				AB33EB71305F929D00C96A80 /* Recovered References */,
 			);
 			sourceTree = "<group>";
 		};
@@ -175,7 +183,7 @@
 			isa = PBXSourcesBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
-				F0B200000000000000000006 /* Reference.m in Sources */,
+				F0B200000000000000000006 /* Mini/ReferenceSamples/Reference.m in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};

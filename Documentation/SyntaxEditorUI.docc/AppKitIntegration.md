@@ -70,6 +70,7 @@ The view preserves the viewed text position across geometry changes and comparis
 
 ### Document comparison
 
+- <doc:ComparingDocuments>
 - ``SyntaxEditorComparisonView-2w0hh``
 - ``SyntaxEditorComparisonViewController-5esrd``
 - ``SyntaxEditorComparisonModel``

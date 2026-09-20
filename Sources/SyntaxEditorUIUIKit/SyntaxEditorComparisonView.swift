@@ -170,6 +170,22 @@ public final class SyntaxEditorComparisonView: UIView {
         viewport.layoutDidComplete()
     }
 
+    /// Orders the editors and visible reference deletions for accessibility.
+    /// Set a custom list to override this order, or `nil` to restore it.
+    public override var accessibilityElements: [Any]? {
+        get {
+            if let custom = super.accessibilityElements { return custom }
+            var elements: [Any] = [modifiedLayout.rulerView, modifiedEditor]
+            if originalEditor.isHidden {
+                elements.append(contentsOf: inlineLayout.deletedViews.sorted { $0.key < $1.key }.map(\.value))
+            } else {
+                elements.append(contentsOf: [originalLayout.rulerView, originalEditor])
+            }
+            return elements
+        }
+        set { super.accessibilityElements = newValue }
+    }
+
     public override func tintColorDidChange() {
         super.tintColorDidChange()
         scheduleRefresh(appearanceChanged: true)

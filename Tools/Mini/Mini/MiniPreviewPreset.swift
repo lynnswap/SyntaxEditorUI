@@ -12,6 +12,8 @@ extension MiniPreviewPreset:Hashable,Identifiable{
 
 struct MiniPreviewPreset {
     enum ID: String, CaseIterable, Sendable {
+        case comparison
+        case largeComparison = "large-comparison"
         case plainText = "plain-text"
         case assemblyARM = "assembly-arm"
         case css
@@ -27,14 +29,14 @@ struct MiniPreviewPreset {
 
     let id: ID
     let title: String
-    let sampleFilename: String
+    let sampleFilename: String?
     let fallbackSampleText: String
     let language: SyntaxLanguage
 
     init(
         id: ID,
         title: String? = nil,
-        sampleFilename: String,
+        sampleFilename: String? = nil,
         fallbackSampleText: String,
         language: SyntaxLanguage
     ) {
@@ -46,12 +48,34 @@ struct MiniPreviewPreset {
     }
 
     var sampleText: String {
-        Self.sampleText(named: sampleFilename) ?? fallbackSampleText
+        sampleFilename.flatMap(Self.sampleText(named:)) ?? fallbackSampleText
     }
 
     var accessibilityIdentifier: String {
         "mini.language.\(id.rawValue)"
     }
+
+    var comparisonReference: String? {
+        switch id {
+        case .comparison: MiniComparisonSample.original
+        case .largeComparison: MiniComparisonSample.largeOriginal
+        default: nil
+        }
+    }
+
+    static let comparison = MiniPreviewPreset(
+        id: .comparison,
+        title: "Comparison",
+        fallbackSampleText: MiniComparisonSample.modified,
+        language: .swift
+    )
+
+    static let largeComparison = MiniPreviewPreset(
+        id: .largeComparison,
+        title: "Large Comparison",
+        fallbackSampleText: MiniComparisonSample.largeModified,
+        language: .swift
+    )
 
     static let plainText = MiniPreviewPreset(
         id: .plainText,
@@ -185,6 +209,8 @@ struct MiniPreviewPreset {
     )
 
     static let all: [MiniPreviewPreset] = [
+        comparison,
+        largeComparison,
         plainText,
         assemblyARM,
         css,

@@ -26,7 +26,7 @@ final class MiniPresetListViewController: UICollectionViewController {
     override func viewDidLoad() {
         super.viewDidLoad()
 
-        title = "Languages"
+        title = "Examples"
         collectionView.allowsMultipleSelection = false
         dataSource = makeDataSource()
         applySnapshot()
@@ -40,6 +40,9 @@ final class MiniPresetListViewController: UICollectionViewController {
             return
         }
         model.selectPreset(presetID)
+        if let splitViewController, splitViewController.isCollapsed {
+            splitViewController.show(.secondary)
+        }
     }
 
     private func bindModel() {
@@ -123,7 +126,7 @@ final class MiniPresetListViewController: NSViewController, NSTableViewDataSourc
     init(model: MiniEditorSession) {
         self.model = model
         super.init(nibName: nil, bundle: nil)
-        title = "Languages"
+        title = "Examples"
     }
 
     isolated deinit {
