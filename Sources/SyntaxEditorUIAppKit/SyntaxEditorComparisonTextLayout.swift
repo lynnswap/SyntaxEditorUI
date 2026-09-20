@@ -87,9 +87,10 @@ final class SyntaxEditorComparisonTextLayout {
 
     func refreshTextSettings() {
         guard let editor else { return }
-        let width = max(1, editor.contentSize.width - editor.textContainer.lineFragmentPadding * 2)
-        let font = editor.resolvedBaseFont()
         let wraps = editor.model.lineWrappingEnabled
+        let containerWidth = wraps ? editor.textContainer.size.width : editor.contentSize.width
+        let width = max(1, containerWidth - editor.textContainer.lineFragmentPadding * 2)
+        let font = editor.resolvedBaseFont()
         let geometryChanged = settingsWidth != width || settingsFont != font || settingsWrapping != wraps
         if geometryChanged {
             settingsWidth = width
@@ -169,6 +170,7 @@ final class SyntaxEditorComparisonTextLayout {
         }
         isLayingOut = true
         defer { isLayingOut = false }
+        refreshTextSettings()
         let anchor = captureScrollAnchor()
         let viewport = editor.textView.convert(editor.contentView.bounds, from: editor.contentView).insetBy(dx: 0, dy: -100)
         var visible: Set<Int> = []

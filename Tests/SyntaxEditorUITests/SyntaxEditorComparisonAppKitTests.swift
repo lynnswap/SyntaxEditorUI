@@ -203,6 +203,28 @@ extension SyntaxEditorUITests {
         #expect(view.modifiedEditor.textView.string == source)
     }
 
+    @Test("Inline deletions use the current editor's wrapped width after content inset changes")
+    @MainActor
+    func macComparisonDeletionRespectsContentInsets() async throws {
+        let source = "start\nend\n"
+        let original = "start\n" + String(repeating: "wide text ", count: 30) + "\nend\n"
+        let context = SyntaxEditorTestContext(text: source, language: .plainText, lineWrappingEnabled: true)
+        let (view, window) = try await makeMacComparison(original: original, context: context, width: 500)
+        defer { window.orderOut(nil) }
+        let initial = try #require(view.modifiedLayout.deletedViews[0])
+        let initialHeight = initial.frame.height
+        view.modifiedEditor.contentInsets = NSEdgeInsets(top: 12, left: 60, bottom: 10, right: 90)
+        view.modifiedEditor.layoutSubtreeIfNeeded()
+        let deleted = try #require(view.modifiedLayout.deletedViews[0])
+        let currentContainer = view.modifiedEditor.textContainer
+        let deletedContainer = try #require(deleted.textContainer)
+        #expect(deletedContainer.size.width == currentContainer.size.width - currentContainer.lineFragmentPadding * 2)
+        #expect(deleted.frame.height > initialHeight)
+        #expect(deleted.frame.maxX <= view.modifiedEditor.textView.bounds.maxX)
+        #expect(deleted.string == String(repeating: "wide text ", count: 30) + "\n")
+        #expect(context.model.text == source)
+    }
+
     @Test("Side-by-side scrolling follows unchanged line correspondence after an insertion")
     @MainActor
     func macComparisonScrollsCorrespondingCommonLines() async throws {
