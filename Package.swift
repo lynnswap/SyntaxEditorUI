@@ -124,6 +124,7 @@ let package = Package(
             dependencies: [
                 "SyntaxEditorCoreTypes",
                 "SyntaxEditorTheme",
+                .product(name: "ObservationBridge", package: "observationbridge"),
             ],
             swiftSettings: syntaxEditorSwiftSettings
         ),
@@ -416,7 +417,11 @@ let package = Package(
         ),
         .testTarget(
             name: "SyntaxEditorCoreTests",
-            dependencies: ["SyntaxEditorCore"]
+            dependencies: [
+                "SyntaxEditorCore",
+                "SyntaxEditorModel",
+                .product(name: "ObservationBridge", package: "observationbridge"),
+            ]
         ),
         .testTarget(
             name: "XclangSpecSyntaxTests",

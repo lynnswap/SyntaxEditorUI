@@ -15,7 +15,7 @@ extension SyntaxEditorView {
             drawsBackground: model.drawsBackground,
             fontSizeDelta: model.fontSizeDelta
         )
-        applyObservedModelChange(forceTextUpdate: text != model.text)
+        applyObservedModelChange(forceTextUpdate: !text.utf16.elementsEqual(model.text.utf16))
         applyObservedSelection(model.selectedRange)
     }
     func startModelObservation(
@@ -94,7 +94,7 @@ extension SyntaxEditorView {
 
         let previousText = text
         let nextText = model.text
-        let textNeedsUpdate = forceTextUpdate || previousText != nextText
+        let textNeedsUpdate = forceTextUpdate || !previousText.utf16.elementsEqual(nextText.utf16)
 
         if textNeedsUpdate {
             commandEngine.invalidateTransientState()

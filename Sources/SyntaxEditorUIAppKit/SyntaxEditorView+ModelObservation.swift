@@ -144,7 +144,7 @@
       }
 
       let text = model.text
-      let textNeedsUpdate = forceTextUpdate || textView.string != text
+      let textNeedsUpdate = forceTextUpdate || !textView.string.utf16.elementsEqual(text.utf16)
       var highlightMutation: SyntaxEditorTextChange.Replacement?
       if textNeedsUpdate {
         commandEngine.invalidateTransientState()

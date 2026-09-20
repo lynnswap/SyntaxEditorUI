@@ -420,6 +420,24 @@ struct SyntaxEditorCoreTests {
         #expect(SyntaxEditorTextChange.Replacement.singleReplacement(from: "body {}", to: "body {}") == nil)
     }
 
+    @Test("Inferred replacements preserve supplementary Unicode scalars")
+    func textMutationScalarBoundaries() throws {
+        for (old, new) in [
+            ("\u{1D15E}", "\u{1D157}\u{1D165}"),
+            ("\u{1D157}\u{1D165}", "\u{1D15E}"),
+            ("😀", "😁"),
+            ("\u{10000}", "\u{10400}"),
+        ] {
+            let original = "prefix " + old + " suffix"
+            let updated = "prefix " + new + " suffix"
+            let mutation = try #require(SyntaxEditorTextChange.Replacement.singleReplacement(from: original, to: updated))
+            #expect(mutation.range == NSRange(location: 7, length: old.utf16.count))
+            #expect(mutation.replacement.utf16.elementsEqual(new.utf16))
+            let result = SyntaxEditorTextChange.applying([mutation], to: original)
+            #expect(result.utf16.elementsEqual(updated.utf16))
+        }
+    }
+
     @Test("SyntaxEditorTextChange.Replacement computes insertion range for newline")
     func textMutationInsertionRange() {
         let mutation = SyntaxEditorTextChange.Replacement.singleReplacement(from: "a\nb", to: "a\n\nb")

@@ -56,7 +56,7 @@
 
       let previousText = model.text
       let nextText = textView.string
-      if isApplyingHighlight, nextText == previousText {
+      if isApplyingHighlight, nextText.utf16.elementsEqual(previousText.utf16) {
         clearPendingTextChangeState()
         return
       }
