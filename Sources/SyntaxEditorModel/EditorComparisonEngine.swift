@@ -206,6 +206,7 @@ package enum EditorComparisonEngine {
             ? try anchors(original, modified, originalRange: originalRange, modifiedRange: modifiedRange)
             : []
         var result: [TokenChange] = []
+        var remainingBudget = budget
         var originalStart = originalRange.lowerBound
         var modifiedStart = modifiedRange.lowerBound
         for anchor in anchors {
@@ -214,7 +215,7 @@ package enum EditorComparisonEngine {
                 original, modified,
                 originalRange: originalStart..<anchor.original,
                 modifiedRange: modifiedStart..<anchor.modified,
-                budget: budget,
+                budget: &remainingBudget,
                 to: &result
             )
             originalStart = anchor.original + 1
@@ -224,7 +225,7 @@ package enum EditorComparisonEngine {
             original, modified,
             originalRange: originalStart..<originalRange.upperBound,
             modifiedRange: modifiedStart..<modifiedRange.upperBound,
-            budget: budget,
+            budget: &remainingBudget,
             to: &result
         )
         return result
@@ -305,7 +306,7 @@ package enum EditorComparisonEngine {
     private static func appendGap(
         _ original: [Int], _ modified: [Int],
         originalRange: Range<Int>, modifiedRange: Range<Int>,
-        budget: Int, to result: inout [TokenChange]
+        budget: inout Int, to result: inout [TokenChange]
     ) throws {
         try Task.checkCancellation()
         var originalRange = originalRange
@@ -318,8 +319,9 @@ package enum EditorComparisonEngine {
             return
         }
 
-        // The standard diff is not cancellable. Bound each call, and keep coarse
-        // replacements for larger ambiguous gaps without rejecting their text.
+        // The standard diff is not cancellable. Share its work budget across
+        // gaps so many anchors cannot multiply the cost of detailed comparison.
+        budget -= originalRange.count * modifiedRange.count
         let difference = modified[modifiedRange].difference(from: original[originalRange])
         try Task.checkCancellation()
         var removals: Set<Int> = []

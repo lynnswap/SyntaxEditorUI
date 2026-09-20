@@ -131,6 +131,22 @@ struct EditorComparisonEngineTests {
         #expect(change.modifiedRange == change.originalRange)
     }
 
+    @Test("Many ambiguous gaps share one detail budget while preserving their anchors")
+    func sharedGapBudget() async throws {
+        func source(changedLine: String) -> String {
+            (0..<3).map { block in
+                "anchor \(block)\n"
+                    + String(repeating: changedLine + "\n", count: 300)
+                    + "shared\nshared\n"
+                    + String(repeating: changedLine + "\n", count: 300)
+            }.joined() + "end\n"
+        }
+        let changes = try await verifiedChanges(original: source(changedLine: "old"), modified: source(changedLine: "new"))
+        #expect(changes.count == 5)
+        #expect(changes.last?.originalLines == 1_207..<1_809)
+        #expect(changes.last?.modifiedLines == 1_207..<1_809)
+    }
+
     @Test("Very long changed lines remain comparable without detailed spans")
     func longLines() async throws {
         let original = String(repeating: "a", count: 50_000)
