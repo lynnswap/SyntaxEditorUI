@@ -35,6 +35,8 @@ public final class SyntaxEditorView: UIScrollView, UITextInput, UITextInputTrait
     let comparisonMarginFragments = NSHashTable<SyntaxEditorComparisonTextLayoutFragment>.weakObjects()
     var didUpdateSyntaxRendering: (([NSRange]) -> Void)?
     var didChangeComparisonViewport: (() -> Void)?
+    var comparisonWillLayout: (() -> Void)?
+    var comparisonDidLayout: ((Bool) -> Void)?
     let editableTextInteraction = UITextInteraction(for: .editable)
     let nonEditableTextInteraction = UITextInteraction(for: .nonEditable)
     var findCoordinator: SyntaxEditorFindCoordinator?

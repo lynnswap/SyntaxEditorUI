@@ -28,6 +28,7 @@ final class SyntaxEditorInlineComparisonLayout {
     private var needsMarginUpdate = false
     private var selectedChangeIndex: Int?
     var onFind: ((Selector, Any?) -> Void)?
+    private(set) var originalRevision: Int?
 
     var deletedViews: [Int: SyntaxEditorComparisonDeletedTextView] {
         Dictionary(uniqueKeysWithValues: blocks.compactMap { block in
@@ -49,11 +50,13 @@ final class SyntaxEditorInlineComparisonLayout {
         topBlocks.removeAll()
         footerBlocks.removeAll()
         settings = nil
+        originalRevision = nil
         guard let editor, let originalEditor else {
             needsMarginUpdate = hadBlocks
             return
         }
 
+        originalRevision = originalEditor.model.textRevision
         let source = originalEditor.model.text as NSString
         let modifiedLength = editor.model.text.utf16.count
         for (index, change) in changes.enumerated() where change.originalRange.length > 0 {
@@ -72,6 +75,50 @@ final class SyntaxEditorInlineComparisonLayout {
     func updateSelectedChange(_ index: Int?) {
         selectedChangeIndex = index
         for block in blocks { block.view?.isChangeSelected = block.index == index }
+    }
+
+    struct ReferencePosition {
+        let offset: Int
+        let delta: CGFloat
+        let revision: Int
+    }
+
+    func referencePosition(atY y: CGFloat) -> ReferencePosition? {
+        guard let originalRevision else { return nil }
+        for block in blocks {
+            guard let view = block.view, let frame = block.frame,
+                  y >= frame.minY + 4, y < frame.maxY - 4,
+                  let position = view.closestPosition(to: CGPoint(x: view.bounds.minX + 1, y: y - frame.minY - 4)) else { continue }
+            let offset = min(view.offset(from: view.beginningOfDocument, to: position), max(0, block.change.originalRange.length - 1))
+            return ReferencePosition(offset: block.change.originalRange.location + offset,
+                                     delta: y - frame.minY - 4 - view.caretRect(for: position).minY,
+                                     revision: originalRevision)
+        }
+        return nil
+    }
+
+    func changeIndex(containingOriginalOffset offset: Int) -> Int? {
+        blocks.first { NSLocationInRange(offset, $0.change.originalRange) }?.index
+    }
+
+    func referenceY(for position: ReferencePosition) -> CGFloat? {
+        guard originalRevision == position.revision,
+              let block = blocks.first(where: { NSLocationInRange(position.offset, $0.change.originalRange) }),
+              let view = block.view, let frame = block.frame,
+              let local = view.reveal(offset: position.offset - block.change.originalRange.location) else { return nil }
+        return frame.minY + 4 + local.minY + position.delta
+    }
+
+    func frame(forChangeAt index: Int) -> CGRect? {
+        guard let block = blocks.first(where: { $0.index == index }), block.view != nil else { return nil }
+        return block.frame
+    }
+
+    func changeIndex(atY y: CGFloat) -> Int? {
+        blocks.first { block in
+            guard block.view != nil, let frame = block.frame else { return false }
+            return y >= frame.minY && y < frame.maxY
+        }?.index
     }
 
     func containsDeletedText(at point: CGPoint) -> Bool {
@@ -236,6 +283,7 @@ final class SyntaxEditorInlineComparisonLayout {
         let padding = editor.container.lineFragmentPadding
         let frame = CGRect(x: editor.textContentView.frame.minX, y: y,
                            width: (settings.wraps ? settings.width : max(settings.width, block.size.width)) + padding * 2, height: block.height)
+        block.frame = frame
         guard frame.intersects(viewport) || hasFocus(block) else { return false }
         visible.insert(block.index)
         let view: SyntaxEditorComparisonDeletedTextView
@@ -261,6 +309,7 @@ final class SyntaxEditorInlineComparisonLayout {
         block.appliedNativeOffset = view.contentOffset
         let changed = abs(block.size.height - measured.height) > 0.5 || abs(block.size.width - measured.width) > 0.5
         block.size = measured
+        block.frame?.size.height = block.height
         view.isChangeSelected = block.index == selectedChangeIndex
         return changed
     }
@@ -331,6 +380,7 @@ final class SyntaxEditorInlineComparisonLayout {
         var view: SyntaxEditorComparisonDeletedTextView?
         var needsStyleUpdate = false
         var appliedNativeOffset = CGPoint.zero
+        var frame: CGRect?
 
         init(index: Int, change: EditorComparisonEngine.Change, isFooter: Bool, text: String) {
             self.index = index

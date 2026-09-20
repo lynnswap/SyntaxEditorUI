@@ -142,6 +142,18 @@ final class SyntaxEditorComparisonDeletedTextView: UITextView, UITextViewDelegat
         return size
     }
 
+    func reveal(offset: Int) -> CGRect? {
+        guard let location = comparisonContentStorage.location(comparisonContentStorage.documentRange.location, offsetBy: offset),
+              let end = comparisonContentStorage.location(location, offsetBy: 1),
+              let range = NSTextRange(location: location, end: end) else { return nil }
+        comparisonLayoutManager.ensureLayout(for: range)
+        _ = comparisonLayoutManager.textViewportLayoutController.relocateViewport(to: location)
+        guard let fragment = comparisonLayoutManager.textLayoutFragment(for: location),
+              let line = fragment.textLineFragment(for: location, isUpstreamAffinity: false) else { return nil }
+        return CGRect(x: 0, y: fragment.layoutFragmentFrame.minY + line.typographicBounds.minY,
+                      width: bounds.width, height: line.typographicBounds.height)
+    }
+
     func textViewDidChangeSelection(_ textView: UITextView) {
         guard !isApplyingPresentation else { return }
         onSelectionChange?(NSRange(

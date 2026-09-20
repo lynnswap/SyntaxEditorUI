@@ -224,7 +224,12 @@ extension SyntaxEditorView {
         guard bounds.width > 0, bounds.height > 0, !isLayingOutText else { return }
 
         isLayingOutText = true
-        defer { isLayingOutText = false }
+        var changedGeometry = false
+        defer {
+            isLayingOutText = false
+            comparisonDidLayout?(changedGeometry)
+        }
+        comparisonWillLayout?()
         updateTextContentViewFrameIfNeeded(contentSize: contentSize)
 
         var remainingIterations = 5
@@ -232,12 +237,14 @@ extension SyntaxEditorView {
             needsTextRelayout = false
             let changedEstimates = inlineComparisonLayout?.prepareForLayout() ?? false
             if changedEstimates || needsInlineComparisonLayout {
+                changedGeometry = true
                 needsInlineComparisonLayout = false
                 updateComparisonMargins()
                 updateContentSizeIfNeeded()
             }
             layoutManager.textViewportLayoutController.layoutViewport()
             if layoutInlineComparison() {
+                changedGeometry = true
                 needsInlineComparisonLayout = true
                 needsTextRelayout = true
             }

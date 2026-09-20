@@ -150,6 +150,17 @@ final class SyntaxEditorComparisonTextLayout {
         override func draw(_ rect: CGRect) {
             comparisonLayout?.drawRuler(self, dirtyRect: rect)
         }
+
+        override func touchesEnded(_ touches: Set<UITouch>, with event: UIEvent?) {
+            guard let layout = comparisonLayout, let editor = layout.editor, let touch = touches.first else { return }
+            let point = touch.location(in: editor)
+            if let index = editor.inlineComparisonLayout?.changeIndex(atY: point.y) {
+                _ = layout.comparison?.model.selectChange(at: index)
+            } else if let position = editor.closestPosition(to: CGPoint(x: editor.textContentView.frame.minX + editor.container.lineFragmentPadding + 1, y: point.y)),
+                      let index = layout.changeIndex(at: editor.offset(from: editor.beginningOfDocument, to: position)) {
+                _ = layout.comparison?.model.selectChange(at: index)
+            }
+        }
     }
 
     private func drawRuler(_ ruler: ComparisonRuler, dirtyRect: CGRect) {
