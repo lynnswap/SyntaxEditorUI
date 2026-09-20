@@ -306,6 +306,7 @@
         }
       }
       invalidateVisibleTextDisplay()
+      if fullRange.length > 0 { didUpdateSyntaxRendering?([fullRange]) }
     }
 
   }

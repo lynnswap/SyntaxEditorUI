@@ -36,7 +36,7 @@ final class SyntaxEditorComparisonTextLayout {
                 utf16Length: sourceRange(change).upperBound
             )
         }
-        self.presentation = presentation == .sideBySide ? .sideBySide : .changeMarkers
+        self.presentation = presentation
         updateSelectedChange(selectedChangeIndex)
     }
 
@@ -199,6 +199,9 @@ final class SyntaxEditorComparisonTextLayout {
                      change: changeIndex(at: offset),
                      deleted: side == .original)
             }
+        }
+        for mark in editor.textView.inlineComparisonLayout?.visibleLineMarks ?? [] {
+            draw(mark.originalLine + 1, at: mark.origin, change: mark.changeIndex, deleted: true)
         }
     }
 }

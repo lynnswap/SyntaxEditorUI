@@ -71,6 +71,7 @@ extension SyntaxEditorTextInputView {
     }
 
     func invalidateTextLayout() {
+        if isLayingOutViewport { needsViewportLayout = true }
         updateDocumentFrameForCurrentText()
         textLayoutManager.invalidateLayout(for: textContentStorage.documentRange)
         textLayoutManager.textSelectionNavigation.flushLayoutCache()
@@ -134,21 +135,85 @@ extension SyntaxEditorTextInputView {
             lineWrappingEnabled: lineWrappingEnabled,
             lineHeight: lineHeight,
             columnWidth: estimatedColumnWidth,
-            lineFragmentPadding: textContainer?.lineFragmentPadding ?? 0
+            lineFragmentPadding: textContainer?.lineFragmentPadding ?? 0,
+            additionalHeight: inlineComparisonLayout?.additionalHeight ?? 0,
+            minimumTextWidth: inlineComparisonLayout?.minimumTextWidth ?? 0
         )
     }
 
-    func layoutVisibleViewport() {
-        guard bounds.width > 0, bounds.height > 0 else { return }
+    func invalidateInlineComparisonLayout() {
+        needsViewportLayout = true
+        needsLayout = true
+    }
 
-        textLayoutManager.textViewportLayoutController.layoutViewport()
+    func layoutVisibleViewport() {
+        guard bounds.width > 0, bounds.height > 0, !isLayingOutViewport else { return }
+        if let scrollView = enclosingScrollView,
+           scrollView.contentView.bounds.width <= 0 || scrollView.contentView.bounds.height <= 0 { return }
+        isLayingOutViewport = true
+        defer { isLayingOutViewport = false }
+
+        var remainingPasses = 5
+        repeat {
+            let changedEstimates = inlineComparisonLayout?.prepareForLayout() ?? false
+            if changedEstimates || needsViewportLayout {
+                needsViewportLayout = false
+                updateComparisonMargins()
+                updateDocumentFrameForCurrentText()
+            }
+            textLayoutManager.textViewportLayoutController.layoutViewport()
+            if let inlineComparisonLayout {
+                var fragments = textContentView.subviews.compactMap {
+                    ($0 as? TextLayoutFragmentView)?.layoutFragment
+                }
+                for offset in inlineComparisonLayout.focusedAnchorOffsets {
+                    guard let range = textRange(forUTF16Range: NSRange(location: offset, length: 1)) else { continue }
+                    textLayoutManager.ensureLayout(for: range)
+                    if let fragment = textLayoutManager.textLayoutFragment(for: range.location),
+                       !fragments.contains(where: { $0 === fragment }) {
+                        fragments.append(fragment)
+                    }
+                }
+                let viewport = visibleViewportBounds.insetBy(dx: 0, dy: -100)
+                let caret = storage.length == 0 ? caretRect(forUTF16Location: 0) : nil
+                if inlineComparisonLayout.layoutDeletedViews(
+                    in: fragments, viewport: viewport, emptyDocumentCaretFrame: caret
+                ) { needsViewportLayout = true }
+            }
+            remainingPasses -= 1
+        } while needsViewportLayout && remainingPasses > 0
+        if needsViewportLayout { needsLayout = true }
+        comparisonLayout?.layoutDidComplete()
+    }
+
+    func configureComparisonMargins(for fragment: TextLayoutFragment) {
+        let margins = inlineComparisonLayout?.margins(for: textRange(for: fragment)) ?? (top: 0, bottom: 0)
+        fragment.comparisonTopMargin = margins.top
+        fragment.comparisonBottomMargin = margins.bottom
+        if margins.top > 0 || margins.bottom > 0 { comparisonMarginFragments.add(fragment) }
+    }
+
+    private func updateComparisonMargins() {
+        for fragment in comparisonMarginFragments.allObjects {
+            fragment.comparisonTopMargin = 0
+            fragment.comparisonBottomMargin = 0
+            fragment.invalidateLayout()
+        }
+        comparisonMarginFragments.removeAllObjects()
+        for offset in inlineComparisonLayout?.marginAnchorOffsets ?? [] {
+            guard let location = textLocation(forUTF16Offset: offset),
+                  let fragment = textLayoutManager.textLayoutFragment(for: location) as? TextLayoutFragment else { continue }
+            configureComparisonMargins(for: fragment)
+            fragment.invalidateLayout()
+        }
+        textLayoutManager.invalidateLayout(for: textContentStorage.documentRange)
     }
 
     func layoutVisibleViewportIfNeeded() {
         guard bounds.width > 0, bounds.height > 0 else { return }
 
         let viewportBounds = textLayoutManager.textViewportLayoutController.viewportBounds
-        if viewportBounds.contains(visibleViewportBounds) {
+        if !needsViewportLayout, viewportBounds.contains(visibleViewportBounds) {
             return
         }
         layoutVisibleViewport()
@@ -267,7 +332,9 @@ extension SyntaxEditorTextInputView {
         textLayoutFragmentFor location: NSTextLocation,
         in textElement: NSTextElement
     ) -> NSTextLayoutFragment {
-        SyntaxEditorTextInputView.TextLayoutFragment(textElement: textElement, range: textElement.elementRange)
+        let fragment = SyntaxEditorTextInputView.TextLayoutFragment(textElement: textElement, range: textElement.elementRange)
+        configureComparisonMargins(for: fragment)
+        return fragment
     }
 
     func setNeedsDisplayForContentRect(_ rect: NSRect) {
@@ -295,6 +362,13 @@ extension SyntaxEditorTextInputView {
         configureRenderingSurfaceFor textLayoutFragment: NSTextLayoutFragment
     ) {
         var layoutFragmentFrame = textLayoutFragment.layoutFragmentFrame
+        if inlineComparisonLayout != nil {
+            let lineBounds = textLayoutFragment.textLineFragments.reduce(CGRect.null) { $0.union($1.typographicBounds) }
+            if !lineBounds.isNull {
+                layoutFragmentFrame.origin.y += lineBounds.minY
+                layoutFragmentFrame.size.height = lineBounds.height
+            }
+        }
         if comparisonLayout != nil {
             layoutFragmentFrame.size.width = max(layoutFragmentFrame.width, bounds.width - layoutFragmentFrame.minX)
         }

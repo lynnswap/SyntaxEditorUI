@@ -10,6 +10,7 @@ final class SyntaxEditorComparisonView: NSView {
     let originalEditor: SyntaxEditorView
     let modifiedLayout: SyntaxEditorComparisonTextLayout
     let originalLayout: SyntaxEditorComparisonTextLayout
+    let inlineLayout: SyntaxEditorInlineComparisonLayout
     private let splitView = NSSplitView()
     private var comparisonObservation: PortableObservationTracking.Token?
     private var configurationObservation: PortableObservationTracking.Token?
@@ -60,7 +61,15 @@ final class SyntaxEditorComparisonView: NSView {
         self.originalEditor = originalEditor
         modifiedLayout = SyntaxEditorComparisonTextLayout(editor: modifiedEditor, side: .modified)
         originalLayout = SyntaxEditorComparisonTextLayout(editor: originalEditor, side: .original)
+        let inlineLayout = SyntaxEditorInlineComparisonLayout(editor: modifiedEditor, originalEditor: originalEditor)
+        self.inlineLayout = inlineLayout
         super.init(frame: .zero)
+        modifiedEditor.textView.inlineComparisonLayout = inlineLayout
+        originalEditor.didUpdateSyntaxRendering = { [weak inlineLayout, weak modifiedEditor] ranges in
+            if inlineLayout?.invalidateReferenceStyles(in: ranges) == true {
+                modifiedEditor?.textView.needsLayout = true
+            }
+        }
         splitView.isVertical = true
         splitView.dividerStyle = .thin
         splitView.arrangesAllSubviews = false
@@ -87,6 +96,8 @@ final class SyntaxEditorComparisonView: NSView {
         refreshTask?.cancel()
         refreshTask = nil
         // Detach ranges from the old texts before either editor changes documents.
+        inlineLayout.update(changes: [])
+        modifiedEditor.textView.invalidateInlineComparisonLayout()
         modifiedLayout.update(changes: [], presentation: .changeMarkers, selectedChangeIndex: nil)
         originalLayout.update(changes: [], presentation: .changeMarkers, selectedChangeIndex: nil)
         model = nextModel
@@ -120,6 +131,7 @@ final class SyntaxEditorComparisonView: NSView {
         let model = model
         comparisonObservation = withPortableContinuousObservation { [weak self, model] _ in
             _ = model.original.textRevision
+            _ = model.original.selectedRange
             _ = model.modified.textRevision
             _ = model.changes
             _ = model.presentation
@@ -159,6 +171,8 @@ final class SyntaxEditorComparisonView: NSView {
             setReferenceVisible(showsReference)
         }
         if displayedContent != identity {
+            inlineLayout.update(changes: identity.presentation == .inline ? changes : [])
+            modifiedEditor.textView.invalidateInlineComparisonLayout()
             modifiedLayout.update(changes: changes, presentation: identity.presentation, selectedChangeIndex: selection)
             originalLayout.update(changes: changes, presentation: identity.presentation, selectedChangeIndex: selection)
             displayedContent = identity
@@ -166,6 +180,7 @@ final class SyntaxEditorComparisonView: NSView {
             modifiedLayout.updateSelectedChange(selection)
             originalLayout.updateSelectedChange(selection)
         }
+        inlineLayout.updateReferenceSelection(model.original.selectedRange)
         displayedSelection = selection
         needsAppearanceRefresh = false
     }

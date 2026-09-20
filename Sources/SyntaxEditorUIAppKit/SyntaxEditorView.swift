@@ -69,6 +69,7 @@
     let highlighter: any SyntaxEditorHighlighting.Engine
     let commandEngine = EditorCommandEngine()
     var highlightTask: Task<Void, Never>?
+    var didUpdateSyntaxRendering: (([NSRange]) -> Void)?
     var scheduledHighlightRequest: ScheduledHighlightRequest?
     var nextScheduledHighlightRequestID = 0
     var lastHighlightTokens: [SyntaxEditorHighlighting.Token] = []
