@@ -310,6 +310,45 @@ extension SyntaxEditorUITests {
         #expect(hit !== deleted && !(hit?.isDescendant(of: deleted) ?? false))
     }
 
+    @Test("Glyph surfaces pass clicks to the editor while deleted text remains interactive")
+    @MainActor
+    func appKitInlineHitTestingPreservesTextInput() async throws {
+        let source = "current before\ncurrent after\n"
+        let fixture = try await makeInlineLayoutFixture(
+            original: "current before\nremoved reference\ncurrent after\n",
+            context: SyntaxEditorTestContext(text: source, language: .plainText)
+        )
+        defer { fixture.close() }
+        let textView = fixture.view.modifiedEditor.textView
+        #expect(textView.textContentView.subviews.contains { $0 is SyntaxEditorTextInputView.TextLayoutFragmentView })
+        let current = try #require(textView.rectsForCharacterRange(NSRange(location: 1, length: 3)).first)
+        let currentPoint = textView.convert(CGPoint(x: current.midX, y: current.midY), to: textView.superview)
+        #expect(textView.hitTest(currentPoint) === textView)
+
+        let deleted = try #require(fixture.view.inlineLayout.deletedViews[0])
+        let deletedPoint = deleted.convert(CGPoint(x: 20, y: 7), to: textView.superview)
+        let deletedHit = textView.hitTest(deletedPoint)
+        #expect(deletedHit === deleted || deletedHit?.isDescendant(of: deleted) == true)
+
+        fixture.view.model.presentation = .changeMarkers
+        await fixture.view.waitForPendingComparisonRefreshForTesting {
+            fixture.view.displayedPresentationForTesting == .changeMarkers
+        }
+        layoutInlineFixture(fixture.view)
+        let glyph = try #require(textView.rectsForCharacterRange(NSRange(location: 1, length: 3)).first)
+        let point = textView.convert(CGPoint(x: glyph.midX, y: glyph.midY), to: textView.superview)
+        #expect(textView.hitTest(point) === textView)
+
+        let ordinary = SyntaxEditorView(model: SyntaxEditorModel(text: source, language: .plainText))
+        fixture.window.contentView = ordinary
+        ordinary.layoutSubtreeIfNeeded()
+        ordinary.textView.layoutVisibleViewport()
+        #expect(ordinary.textView.textContentView.subviews.contains { $0 is SyntaxEditorTextInputView.TextLayoutFragmentView })
+        let plainGlyph = try #require(ordinary.textView.rectsForCharacterRange(NSRange(location: 1, length: 3)).first)
+        let plainPoint = ordinary.textView.convert(CGPoint(x: plainGlyph.midX, y: plainGlyph.midY), to: ordinary.textView.superview)
+        #expect(ordinary.textView.hitTest(plainPoint) === ordinary.textView)
+    }
+
     @Test("Inline measurement never reenters the active parent viewport delegate")
     @MainActor
     func appKitInlineDoesNotReenterParentViewport() async throws {
