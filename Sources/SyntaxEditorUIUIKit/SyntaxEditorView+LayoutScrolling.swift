@@ -10,6 +10,7 @@ extension SyntaxEditorView {
     }
     public override var bounds: CGRect {
         didSet {
+            if bounds.origin != oldValue.origin { didChangeComparisonViewport?() }
             guard bounds.size != oldValue.size else { return }
             updateTextContainerForCurrentWrappingMode()
             setNeedsLayout()
@@ -714,7 +715,10 @@ extension SyntaxEditorView {
         _ textViewportLayoutController: NSTextViewportLayoutController,
         configureRenderingSurfaceFor textLayoutFragment: NSTextLayoutFragment
     ) {
-        let layoutFragmentFrame = textLayoutFragment.layoutFragmentFrame
+        var layoutFragmentFrame = textLayoutFragment.layoutFragmentFrame
+        if comparisonLayout != nil {
+            layoutFragmentFrame.size.width = max(layoutFragmentFrame.width, textContentView.bounds.width)
+        }
         let fragmentView: SyntaxEditorView.TextLayoutFragmentView
         if let cachedFragmentView = fragmentViewMap.object(forKey: textLayoutFragment) {
             fragmentView = cachedFragmentView
@@ -726,6 +730,7 @@ extension SyntaxEditorView {
             )
             fragmentViewMap.setObject(fragmentView, forKey: textLayoutFragment)
         }
+        fragmentView.editor = self
         configureFindHighlights(for: fragmentView, layoutFragmentFrame: layoutFragmentFrame)
         configureBracketHighlights(for: fragmentView, layoutFragmentFrame: layoutFragmentFrame)
 
@@ -744,6 +749,7 @@ extension SyntaxEditorView {
             staleView.removeFromSuperview()
         }
         lastUsedFragmentViews.removeAll()
+        comparisonLayout?.layoutDidComplete()
 
         if !isLayingOutText {
             updateContentSizeIfNeeded()
