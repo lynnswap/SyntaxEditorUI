@@ -30,6 +30,10 @@ public final class SyntaxEditorView: UIScrollView, UITextInput, UITextInputTrait
     let textSystem = EditorTextSystem()
     let textContentView = SyntaxEditorView.TextContentView()
     weak var comparisonLayout: SyntaxEditorComparisonTextLayout?
+    weak var inlineComparisonLayout: SyntaxEditorInlineComparisonLayout?
+    var needsInlineComparisonLayout = false
+    let comparisonMarginFragments = NSHashTable<SyntaxEditorComparisonTextLayoutFragment>.weakObjects()
+    var didUpdateSyntaxRendering: (([NSRange]) -> Void)?
     var didChangeComparisonViewport: (() -> Void)?
     let editableTextInteraction = UITextInteraction(for: .editable)
     let nonEditableTextInteraction = UITextInteraction(for: .nonEditable)

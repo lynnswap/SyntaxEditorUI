@@ -85,6 +85,7 @@ extension SyntaxEditorView {
     func configureTextSystem() {
         container.lineFragmentPadding = 5
         layoutManager.textViewportLayoutController.delegate = self
+        layoutManager.delegate = self
         configureSyntaxRenderingAttributesValidator()
 
         addSubview(textContentView)
@@ -176,7 +177,7 @@ extension SyntaxEditorView {
     }
 
     public func interactionShouldBegin(_ interaction: UITextInteraction, at point: CGPoint) -> Bool {
-        return true
+        inlineComparisonLayout?.containsDeletedText(at: point) != true
     }
 
     public func interactionWillBegin(_ interaction: UITextInteraction) {
@@ -220,26 +221,32 @@ extension SyntaxEditorView {
     }
 
     func layoutTextIfNeeded() {
-        guard bounds.width > 0, bounds.height > 0 else { return }
+        guard bounds.width > 0, bounds.height > 0, !isLayingOutText else { return }
 
         isLayingOutText = true
-        defer {
-            isLayingOutText = false
-        }
-
+        defer { isLayingOutText = false }
         updateTextContentViewFrameIfNeeded(contentSize: contentSize)
 
         var remainingIterations = 5
-        while remainingIterations > 0 {
+        repeat {
             needsTextRelayout = false
+            let changedEstimates = inlineComparisonLayout?.prepareForLayout() ?? false
+            if changedEstimates || needsInlineComparisonLayout {
+                needsInlineComparisonLayout = false
+                updateComparisonMargins()
+                updateContentSizeIfNeeded()
+            }
             layoutManager.textViewportLayoutController.layoutViewport()
-            if !needsTextRelayout {
-                break
+            if layoutInlineComparison() {
+                needsInlineComparisonLayout = true
+                needsTextRelayout = true
             }
             remainingIterations -= 1
-        }
+        } while needsTextRelayout && remainingIterations > 0
 
         updateContentSizeIfNeeded()
+        if needsTextRelayout { setNeedsLayout() }
+        comparisonLayout?.layoutDidComplete()
     }
 
     func updateContentSizeIfNeeded() {
@@ -249,7 +256,9 @@ extension SyntaxEditorView {
         let textHeight = max(lineHeight, ceil(estimatedLayoutSize.height))
         let targetWidth = lastAppliedLineWrappingEnabled
             ? minimumContentSize.width
-            : max(minimumContentSize.width, measuredHorizontalDocumentLayoutWidth(), ceil(estimatedLayoutSize.width + textContainerInset.left + textContainerInset.right))
+            : max(minimumContentSize.width, measuredHorizontalDocumentLayoutWidth(),
+                  (inlineComparisonLayout?.minimumTextWidth ?? 0) + textContainerInset.left + textContainerInset.right,
+                  ceil(estimatedLayoutSize.width + textContainerInset.left + textContainerInset.right))
         let targetHeight = max(minimumContentSize.height, ceil(textHeight + textContainerInset.top + textContainerInset.bottom))
         let nextContentSize = CGSize(width: targetWidth, height: targetHeight)
 
@@ -277,7 +286,7 @@ extension SyntaxEditorView {
             let horizontalInset = textContainerInset.left + textContainerInset.right
             return CGSize(
                 width: max(0, measuredHorizontalDocumentLayoutWidth() - horizontalInset),
-                height: CGFloat(lineMetrics.lineCount) * resolvedBaseFont().lineHeight
+                height: CGFloat(lineMetrics.lineCount) * resolvedBaseFont().lineHeight + (inlineComparisonLayout?.additionalHeight ?? 0)
             )
         }
 
@@ -290,7 +299,7 @@ extension SyntaxEditorView {
         )) * font.lineHeight
         return CGSize(
             width: max(measuredSize.width, adjustedVisibleContentSize.width),
-            height: max(measuredSize.height, estimatedHeight)
+            height: max(measuredSize.height, estimatedHeight + (inlineComparisonLayout?.additionalHeight ?? 0))
         )
     }
 
@@ -372,6 +381,7 @@ extension SyntaxEditorView {
 
     func invalidateSyntaxRenderingAttributes(for ranges: [NSRange]) {
         guard !ranges.isEmpty else { return }
+        didUpdateSyntaxRendering?(ranges)
 
         var invalidatedRanges: [NSRange] = []
         invalidatedRanges.reserveCapacity(ranges.count)
@@ -716,6 +726,13 @@ extension SyntaxEditorView {
         configureRenderingSurfaceFor textLayoutFragment: NSTextLayoutFragment
     ) {
         var layoutFragmentFrame = textLayoutFragment.layoutFragmentFrame
+        if inlineComparisonLayout != nil {
+            let lineBounds = textLayoutFragment.textLineFragments.reduce(CGRect.null) { $0.union($1.typographicBounds) }
+            if !lineBounds.isNull {
+                layoutFragmentFrame.origin.y += lineBounds.minY
+                layoutFragmentFrame.size.height = lineBounds.height
+            }
+        }
         if comparisonLayout != nil {
             layoutFragmentFrame.size.width = max(layoutFragmentFrame.width, textContentView.bounds.width)
         }
