@@ -11,6 +11,8 @@ final class SyntaxEditorTextInputView: NSView, @preconcurrency NSTextInputClient
     weak var inlineComparisonLayout: SyntaxEditorInlineComparisonLayout?
     var isLayingOutViewport = false
     var needsViewportLayout = false
+    var comparisonWillLayout: (() -> Void)?
+    var comparisonDidLayout: ((Bool) -> Void)?
     let comparisonMarginFragments = NSHashTable<TextLayoutFragment>.weakObjects()
     let textFinder = NSTextFinder()
     let insertionIndicator = NSTextInsertionIndicator(frame: .zero)

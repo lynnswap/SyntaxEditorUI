@@ -4,6 +4,7 @@ import AppKit
 @MainActor
 final class SyntaxEditorComparisonDeletedTextView: NSTextView {
     var onSelectionChange: ((NSRange) -> Void)?
+    var onFind: ((Any?) -> Void)?
 
     private let contentStorage = NSTextContentStorage()
     private let comparisonStorage = NSTextStorage()
@@ -114,6 +115,17 @@ final class SyntaxEditorComparisonDeletedTextView: NSTextView {
         return size
     }
 
+    func caretFrame(at offset: Int) -> CGRect? {
+        guard let location = contentStorage.location(contentStorage.documentRange.location, offsetBy: offset) else { return nil }
+        var frame: CGRect?
+        comparisonLayoutManager.enumerateTextSegments(in: NSTextRange(location: location), type: .selection,
+                                                       options: [.rangeNotRequired]) { _, rect, _, _ in
+            frame = rect
+            return false
+        }
+        return frame
+    }
+
     /// Returns a suggested local rect for the beginning of a range, without
     /// laying out the whole range or changing its selection. The parent scrolls
     /// to this rect and then measures the newly visible viewport.
@@ -146,6 +158,9 @@ final class SyntaxEditorComparisonDeletedTextView: NSTextView {
             layer?.borderColor = NSColor.selectedControlColor.cgColor
         }
     }
+
+    override func performFindPanelAction(_ sender: Any?) { onFind?(sender) }
+    override func performTextFinderAction(_ sender: Any?) { onFind?(sender) }
 
     private var lastCharacterLocation: (any NSTextLocation)? {
         guard comparisonStorage.length > 0 else { return nil }

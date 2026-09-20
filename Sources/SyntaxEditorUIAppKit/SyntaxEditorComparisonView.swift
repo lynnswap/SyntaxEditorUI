@@ -3,10 +3,18 @@ import AppKit
 import ObservationBridge
 import SyntaxEditorCore
 
+/// An AppKit comparison of a modified document and its read-only reference.
+///
+/// The modified editor remains installed across presentation changes, preserving
+/// selection, marked text, and undo history. The reference follows its language,
+/// theme, font size, and wrapping settings. Find from inline deleted text opens
+/// the full reference pane.
 @MainActor
-final class SyntaxEditorComparisonView: NSView {
-    private(set) var model: SyntaxEditorComparisonModel
-    let modifiedEditor: SyntaxEditorView
+public final class SyntaxEditorComparisonView: NSView {
+    /// The comparison displayed by this view.
+    public private(set) var model: SyntaxEditorComparisonModel
+    /// The modified document's editor, available for native configuration.
+    public let modifiedEditor: SyntaxEditorView
     let originalEditor: SyntaxEditorView
     let modifiedLayout: SyntaxEditorComparisonTextLayout
     let originalLayout: SyntaxEditorComparisonTextLayout
@@ -20,6 +28,8 @@ final class SyntaxEditorComparisonView: NSView {
     private var displayedSelection: Int?
     private var needsDividerPosition = false
     private var dividerFraction: CGFloat = 0.5
+    lazy var viewport = SyntaxEditorComparisonViewport(comparison: self)
+    private var pendingReferenceHorizontalOffset: CGFloat?
     private var refreshWaitersForTesting: [CheckedContinuation<Void, Never>] = []
 
     private struct ContentIdentity: Equatable {
@@ -40,7 +50,8 @@ final class SyntaxEditorComparisonView: NSView {
 
     var comparisonDeliveryForTesting: PortableObservationTracking.Token? { comparisonObservation }
     var comparisonConfigurationDeliveryForTesting: PortableObservationTracking.Token? { configurationObservation }
-    var displayedPresentationForTesting: SyntaxEditorComparisonModel.Presentation? { displayedContent?.presentation }
+    var displayedPresentation: SyntaxEditorComparisonModel.Presentation { displayedContent?.presentation ?? model.presentation }
+    var displayedPresentationForTesting: SyntaxEditorComparisonModel.Presentation { displayedPresentation }
 
     func waitForPendingComparisonRefreshForTesting(until isReady: () -> Bool = { true }) async {
         while refreshTask != nil || displayedContent != currentContentIdentity
@@ -53,7 +64,8 @@ final class SyntaxEditorComparisonView: NSView {
         }
     }
 
-    init(model: SyntaxEditorComparisonModel) {
+    /// Creates a comparison view with an app-owned model.
+    public init(model: SyntaxEditorComparisonModel) {
         self.model = model
         let modifiedEditor = SyntaxEditorView(model: model.modified)
         let originalEditor = SyntaxEditorView(model: model.original)
@@ -64,7 +76,10 @@ final class SyntaxEditorComparisonView: NSView {
         let inlineLayout = SyntaxEditorInlineComparisonLayout(editor: modifiedEditor, originalEditor: originalEditor)
         self.inlineLayout = inlineLayout
         super.init(frame: .zero)
+        modifiedLayout.comparison = self
+        originalLayout.comparison = self
         modifiedEditor.textView.inlineComparisonLayout = inlineLayout
+        inlineLayout.onFind = { [weak self] sender in self?.findInOriginal(sender) }
         originalEditor.didUpdateSyntaxRendering = { [weak inlineLayout, weak modifiedEditor] ranges in
             if inlineLayout?.invalidateReferenceStyles(in: ranges) == true {
                 modifiedEditor?.textView.needsLayout = true
@@ -89,42 +104,72 @@ final class SyntaxEditorComparisonView: NSView {
 
     deinit { refreshTask?.cancel() }
 
-    func update(model nextModel: SyntaxEditorComparisonModel) {
+    /// Switches the view and both editors to another comparison model.
+    ///
+    /// Passing the current instance has no effect. Rebinding the modified editor
+    /// to another document clears its undo history.
+    public func update(model nextModel: SyntaxEditorComparisonModel) {
         guard model !== nextModel else { return }
-        comparisonObservation?.cancel()
-        configurationObservation?.cancel()
-        refreshTask?.cancel()
-        refreshTask = nil
-        // Detach ranges from the old texts before either editor changes documents.
-        inlineLayout.update(changes: [])
-        modifiedEditor.textView.invalidateInlineComparisonLayout()
-        modifiedLayout.update(changes: [], presentation: .changeMarkers, selectedChangeIndex: nil)
-        originalLayout.update(changes: [], presentation: .changeMarkers, selectedChangeIndex: nil)
-        model = nextModel
-        modifiedEditor.update(model: nextModel.modified)
-        originalEditor.update(model: nextModel.original)
-        displayedContent = nil
-        displayedSelection = nil
-        needsAppearanceRefresh = true
-        refreshComparison()
-        startObservation()
-    }
-
-    override func layout() {
-        super.layout()
-        if needsDividerPosition, splitView.bounds.width > 0 {
-            needsDividerPosition = false
-            splitView.adjustSubviews()
-            splitView.setPosition(
-                max(0, splitView.bounds.width - splitView.dividerThickness) * dividerFraction,
-                ofDividerAt: 0
-            )
+        viewport.performUpdate {
+            viewport.reset()
+            comparisonObservation?.cancel()
+            configurationObservation?.cancel()
+            refreshTask?.cancel()
+            refreshTask = nil
+            // Detach ranges from the old texts before either editor changes documents.
+            inlineLayout.update(changes: [])
+            modifiedEditor.textView.invalidateInlineComparisonLayout()
+            modifiedLayout.update(changes: [], presentation: .changeMarkers, selectedChangeIndex: nil)
+            originalLayout.update(changes: [], presentation: .changeMarkers, selectedChangeIndex: nil)
+            model = nextModel
+            modifiedEditor.update(model: nextModel.modified)
+            originalEditor.update(model: nextModel.original)
+            displayedContent = nil
+            displayedSelection = nil
+            needsAppearanceRefresh = true
+            refreshComparison()
+            startObservation()
         }
+        viewport.layoutDidComplete()
     }
 
-    override func viewDidChangeEffectiveAppearance() {
+    public override func layout() {
+        super.layout()
+        viewport.performUpdate {
+            if needsDividerPosition, splitView.bounds.width > 0 {
+                needsDividerPosition = false
+                splitView.adjustSubviews()
+                splitView.setPosition(
+                    max(0, splitView.bounds.width - splitView.dividerThickness) * dividerFraction,
+                    ofDividerAt: 0
+                )
+            }
+            modifiedEditor.layoutSubtreeIfNeeded()
+            originalEditor.layoutSubtreeIfNeeded()
+            if let offset = pendingReferenceHorizontalOffset, originalEditor.contentView.bounds.width > 0 {
+                pendingReferenceHorizontalOffset = nil
+                let clip = originalEditor.contentView
+                var bounds = clip.bounds
+                bounds.origin.x = offset - clip.contentInsets.left
+                clip.scroll(to: clip.constrainBoundsRect(bounds).origin)
+                originalEditor.reflectScrolledClipView(clip)
+            }
+        }
+        viewport.layoutDidComplete()
+    }
+
+    public override func viewDidChangeEffectiveAppearance() {
         super.viewDidChangeEffectiveAppearance()
         scheduleRefresh(appearanceChanged: true)
+    }
+
+    func findInOriginal(_ sender: Any?) {
+        model.presentation = .sideBySide
+        refreshComparison()
+        layoutSubtreeIfNeeded()
+        originalEditor.selectedRange = model.original.selectedRange
+        unsafe window?.makeFirstResponder(originalEditor.textView)
+        originalEditor.textView.performTextFinderAction(sender)
     }
 
     private func startObservation() {
@@ -166,27 +211,37 @@ final class SyntaxEditorComparisonView: NSView {
         let identity = currentContentIdentity
         let changes = model.changes ?? []
         let selection = model.selectedChangeIndex
-        let showsReference = identity.presentation == .sideBySide
-        if originalEditor.isHidden == showsReference {
-            setReferenceVisible(showsReference)
+        let selectionChanged = selection != displayedSelection
+        viewport.performUpdate(appliesComparison: true) {
+            let showsReference = identity.presentation == .sideBySide
+            if originalEditor.isHidden == showsReference {
+                setReferenceVisible(showsReference)
+            }
+            if displayedContent != identity {
+                inlineLayout.update(changes: identity.presentation == .inline ? changes : [])
+                inlineLayout.updateSelectedChange(selection)
+                modifiedEditor.textView.invalidateInlineComparisonLayout()
+                modifiedLayout.update(changes: changes, presentation: identity.presentation, selectedChangeIndex: selection)
+                originalLayout.update(changes: changes, presentation: identity.presentation, selectedChangeIndex: selection)
+                displayedContent = identity
+            } else if displayedSelection != selection || needsAppearanceRefresh {
+                inlineLayout.updateSelectedChange(selection)
+                modifiedLayout.updateSelectedChange(selection)
+                originalLayout.updateSelectedChange(selection)
+            }
+            inlineLayout.updateReferenceSelection(model.original.selectedRange)
+            displayedSelection = selection
+            needsAppearanceRefresh = false
+            needsLayout = true
+            layoutSubtreeIfNeeded()
         }
-        if displayedContent != identity {
-            inlineLayout.update(changes: identity.presentation == .inline ? changes : [])
-            modifiedEditor.textView.invalidateInlineComparisonLayout()
-            modifiedLayout.update(changes: changes, presentation: identity.presentation, selectedChangeIndex: selection)
-            originalLayout.update(changes: changes, presentation: identity.presentation, selectedChangeIndex: selection)
-            displayedContent = identity
-        } else if displayedSelection != selection || needsAppearanceRefresh {
-            modifiedLayout.updateSelectedChange(selection)
-            originalLayout.updateSelectedChange(selection)
-        }
-        inlineLayout.updateReferenceSelection(model.original.selectedRange)
-        displayedSelection = selection
-        needsAppearanceRefresh = false
+        if selectionChanged { viewport.selectionDidChange(selection) }
+        else { viewport.layoutDidComplete() }
     }
 
     private func setReferenceVisible(_ isVisible: Bool) {
         if isVisible {
+            pendingReferenceHorizontalOffset = originalEditor.contentView.bounds.minX + originalEditor.contentView.contentInsets.left
             originalEditor.isHidden = false
             splitView.addArrangedSubview(originalEditor)
             needsDividerPosition = true
@@ -196,13 +251,14 @@ final class SyntaxEditorComparisonView: NSView {
                 dividerFraction = modifiedEditor.frame.width
                     / (splitView.bounds.width - splitView.dividerThickness)
             }
-            if let active = unsafe window?.firstResponder as? NSView,
-               active.isDescendant(of: originalEditor) {
-                unsafe window?.makeFirstResponder(modifiedEditor.textView)
-            }
+            let active = unsafe window?.firstResponder as? NSView
+            let hadFocus = originalEditor.isFindBarVisible || active?.isDescendant(of: originalEditor) == true
+            originalEditor.textView.textFinder.performAction(.hideFindInterface)
+            if hadFocus { unsafe window?.makeFirstResponder(modifiedEditor.textView) }
             splitView.removeArrangedSubview(originalEditor)
             originalEditor.isHidden = true
             needsDividerPosition = false
+            pendingReferenceHorizontalOffset = nil
         }
         splitView.adjustSubviews()
     }

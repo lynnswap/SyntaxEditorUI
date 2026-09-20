@@ -26,6 +26,9 @@ final class SyntaxEditorInlineComparisonLayout {
     private var footerBlocks: [Block] = []
     private var settings: Settings?
     private var needsMarginUpdate = false
+    private var selectedChangeIndex: Int?
+    private(set) var originalRevision: Int?
+    var onFind: ((Any?) -> Void)?
 
     var deletedViews: [Int: SyntaxEditorComparisonDeletedTextView] {
         Dictionary(uniqueKeysWithValues: blocks.compactMap { block in
@@ -47,11 +50,13 @@ final class SyntaxEditorInlineComparisonLayout {
         topBlocks.removeAll()
         footerBlocks.removeAll()
         settings = nil
+        originalRevision = nil
         guard let editor, let originalEditor else {
             needsMarginUpdate = hadBlocks
             return
         }
 
+        originalRevision = originalEditor.model.textRevision
         let source = originalEditor.model.text as NSString
         let modifiedLength = editor.model.text.utf16.count
         for (index, change) in changes.enumerated() where change.originalRange.length > 0 {
@@ -65,6 +70,60 @@ final class SyntaxEditorInlineComparisonLayout {
         topBlocks = Dictionary(grouping: blocks.filter { !$0.isFooter }, by: { $0.change.modifiedRange.location })
         footerBlocks = blocks.filter(\.isFooter)
         needsMarginUpdate = hadBlocks || !blocks.isEmpty
+    }
+
+    func updateSelectedChange(_ index: Int?) {
+        selectedChangeIndex = index
+        for block in blocks { block.view?.layer?.borderWidth = block.index == index ? 1 : 0 }
+    }
+
+    struct ReferencePosition {
+        let offset: Int
+        let delta: CGFloat
+        let revision: Int
+    }
+
+    func referencePosition(atY y: CGFloat) -> ReferencePosition? {
+        guard let editor, let originalRevision else { return nil }
+        for block in blocks {
+            guard let view = block.view else { continue }
+            let frame = view.convert(view.bounds, to: editor.textView)
+            guard y >= frame.minY, y < frame.maxY else { continue }
+            let point = view.convert(CGPoint(x: frame.minX + 1, y: y), from: editor.textView)
+            let offset = min(view.characterIndexForInsertion(at: point), max(0, block.change.originalRange.length - 1))
+            if let local = view.caretFrame(at: offset) {
+                return ReferencePosition(offset: block.change.originalRange.location + offset,
+                                         delta: point.y - local.minY, revision: originalRevision)
+            }
+        }
+        return nil
+    }
+
+    func changeIndex(containingOriginalOffset offset: Int) -> Int? {
+        blocks.first { NSLocationInRange(offset, $0.change.originalRange) }?.index
+    }
+
+    func referenceY(for position: ReferencePosition) -> CGFloat? {
+        guard let editor, originalRevision == position.revision,
+              let block = blocks.first(where: { NSLocationInRange(position.offset, $0.change.originalRange) }),
+              let view = block.view,
+              let local = view.reveal(NSRange(location: position.offset - block.change.originalRange.location, length: 0))
+        else { return nil }
+        return view.convert(CGPoint(x: 0, y: local.minY + position.delta), to: editor.textView).y
+    }
+
+    func frame(forChangeAt index: Int) -> CGRect? {
+        guard let editor, let view = blocks.first(where: { $0.index == index })?.view else { return nil }
+        return view.convert(view.bounds, to: editor.textView).insetBy(dx: 0, dy: -4)
+    }
+
+    func changeIndex(atY y: CGFloat) -> Int? {
+        guard let editor else { return nil }
+        return blocks.first { block in
+            guard let view = block.view else { return false }
+            let frame = view.convert(view.bounds, to: editor.textView).insetBy(dx: 0, dy: -4)
+            return y >= frame.minY && y < frame.maxY
+        }?.index
     }
 
     func updateReferenceSelection(_ originalRange: NSRange) {
@@ -238,6 +297,7 @@ final class SyntaxEditorInlineComparisonLayout {
             view.onSelectionChange = { [weak originalEditor] localRange in
                 originalEditor?.model.selectedRange = NSRange(location: originalOffset + localRange.location, length: localRange.length)
             }
+            view.onFind = { [weak self] sender in self?.onFind?(sender) }
             editor.textView.textContentView.addSubview(view)
             block.view = view
         }
@@ -246,6 +306,7 @@ final class SyntaxEditorInlineComparisonLayout {
         let changed = abs(block.size.height - measured.height) > 0.5 || abs(block.size.width - measured.width) > 0.5
         block.size = measured
         view.frame.origin = CGPoint(x: padding, y: y + 4)
+        view.layer?.borderWidth = block.index == selectedChangeIndex ? 1 : 0
         return changed
     }
 

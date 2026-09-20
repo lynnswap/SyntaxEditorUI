@@ -35,7 +35,7 @@ extension SyntaxEditorUITests {
         await view.waitForPendingComparisonRefreshForTesting()
         let selection = textView.selectedRange()
 
-        for presentation: SyntaxEditorComparisonModel.Presentation in [.changeMarkers, .sideBySide, .changeMarkers] {
+        for presentation: SyntaxEditorComparisonModel.Presentation in [.changeMarkers, .sideBySide, .inline] {
             try await changeMacComparison(view, to: presentation)
             #expect(view.modifiedEditor === editor)
             #expect(view.modifiedEditor.textView === textView)
@@ -78,7 +78,7 @@ extension SyntaxEditorUITests {
         let marked = textView.markedRange()
         let selected = textView.selectedRange()
 
-        for presentation: SyntaxEditorComparisonModel.Presentation in [.sideBySide, .changeMarkers] {
+        for presentation: SyntaxEditorComparisonModel.Presentation in [.sideBySide, .changeMarkers, .inline] {
             try await changeMacComparison(view, to: presentation)
             #expect(textView.hasMarkedText())
             #expect(textView.markedRange() == marked)
