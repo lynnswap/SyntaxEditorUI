@@ -400,15 +400,16 @@ extension SyntaxEditorUITests {
     @MainActor
     func macComparisonRulerSelectionKeepsVisibleHunk() async throws {
         let large = (0..<300).map { "changed line \($0)\n" }.joined()
-        for isDeletion in [true, false] {
-            let source = isDeletion ? "before\nafter\n" : large
-            let original = isDeletion ? "before\n" + large + "after\n" : ""
+        for kind in ["deletion", "insertion", "replacement"] {
+            let source = kind == "deletion" ? "before\nafter\n" : large
+            let original = kind == "deletion" ? "before\n" + large + "after\n"
+                : kind == "replacement" ? (0..<300).map { "old line \($0)\n" }.joined() : ""
             let context = SyntaxEditorTestContext(text: source, language: .plainText)
             let (view, window) = try await makeMacComparison(original: original, context: context)
             defer { window.orderOut(nil) }
             let editor = view.modifiedEditor
             let target: CGRect
-            if isDeletion {
+            if kind == "deletion" {
                 let deleted = try #require(view.modifiedLayout.deletedViews[0])
                 target = deleted.convert(deleted.bounds, to: editor.textView)
             } else {

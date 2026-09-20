@@ -353,7 +353,12 @@ final class SyntaxEditorComparisonTextLayout {
         guard let editor, changes.indices.contains(index) else { return }
         let range = sourceRange(changes[index])
         let viewport = editor.textView.convert(editor.contentView.bounds, from: editor.contentView)
-        if let displayed = blocks[index]?.frame ?? frame(forUTF16Range: range),
+        let block = blocks[index]
+        var displayed = block?.frame
+        if block == nil || range.length > 0, let textFrame = frame(forUTF16Range: range) {
+            displayed = displayed.map { $0.union(textFrame) } ?? textFrame
+        }
+        if let displayed,
            !viewport.isEmpty, displayed.minY < viewport.maxY, displayed.maxY > viewport.minY {
             return
         }
