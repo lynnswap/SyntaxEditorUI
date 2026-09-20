@@ -150,7 +150,12 @@ final class SyntaxEditorComparisonViewport: NSObject {
     private func willLayout(_ side: Side) {
         guard !isAdjusting else { return }
         isAdjusting = true
-        layoutAnchors[side] = preferredAnchor(side)
+        let anchor = side == .modified ? pendingComparisonAnchor ?? preferredAnchor(side) : preferredAnchor(side)
+        if side == .modified, comparison?.displayedPresentation == .inline,
+           comparison?.hasUnappliedComparisonContent == true, pendingComparisonAnchor == nil {
+            pendingComparisonAnchor = anchor
+        }
+        layoutAnchors[side] = anchor
         isAdjusting = false
     }
 
@@ -237,9 +242,8 @@ final class SyntaxEditorComparisonViewport: NSObject {
             }
             guard let y else { return }
             let before = editor.contentView.bounds.minY
-            // Keep the restored line on the visible side of a fractional pixel boundary.
-            let scale = unsafe editor.window?.backingScaleFactor ?? 1
-            scroll(editor, to: ceil(y * scale) / scale)
+            // Avoid crossing the preceding line through roundoff without rounding fractional scroll positions.
+            scroll(editor, to: y.nextUp)
             if abs(before - editor.contentView.bounds.minY) < 0.25 { break }
         }
     }

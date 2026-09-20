@@ -119,10 +119,11 @@ extension SyntaxEditorView {
             } else {
                 nextSelection = change?.selectedRange ?? previousSelection
             }
+            let appliedSelection = clampedTextRange(nextSelection, in: nextText)
             setSelectedRange(
-                clampedTextRange(nextSelection, in: nextText),
+                appliedSelection,
                 preservesCommandState: true,
-                schedulesSelectionScroll: true
+                schedulesSelectionScroll: appliedSelection != previousSelection
             )
             updateTypingAttributes()
             updateTextContainerForCurrentWrappingMode()

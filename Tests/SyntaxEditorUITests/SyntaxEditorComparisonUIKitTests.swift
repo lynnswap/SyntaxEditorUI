@@ -27,7 +27,7 @@ extension SyntaxEditorUITests {
         #expect(await ready.waitUntilValue(true))
         await settleIOSComparison(view)
         let selection = editor.selectedRange
-        for presentation: SyntaxEditorComparisonModel.Presentation in [.changeMarkers, .sideBySide, .changeMarkers] {
+        for presentation: SyntaxEditorComparisonModel.Presentation in [.changeMarkers, .sideBySide, .inline] {
             try await changeIOSComparison(view, to: presentation)
             #expect(view.modifiedEditor === editor)
             #expect(editor.superview === parent)
@@ -58,12 +58,15 @@ extension SyntaxEditorUITests {
         let revision = context.model.textRevision + 1
         let delivery = try #require(view.comparisonDeliveryForTesting)
         let ready = await delivery.values { context.model.textRevision == revision && view.model.changeCount != nil }
+        // This test acts as the IME; receive its notifications through the test input client.
+        let inputClient = SyntaxEditorUITestInputDelegate()
+        editor.inputDelegate = inputClient
         editor.setMarkedText("かな", selectedRange: NSRange(location: 2, length: 0))
         #expect(await ready.waitUntilValue(true))
         await settleIOSComparison(view)
         let marked = try #require(editor.markedTextRange as? SyntaxEditorView.TextRange).nsRange
         let selection = editor.selectedRange
-        for presentation: SyntaxEditorComparisonModel.Presentation in [.sideBySide, .changeMarkers] {
+        for presentation: SyntaxEditorComparisonModel.Presentation in [.sideBySide, .changeMarkers, .inline] {
             try await changeIOSComparison(view, to: presentation)
             #expect((editor.markedTextRange as? SyntaxEditorView.TextRange)?.nsRange == marked)
             #expect(editor.selectedRange == selection)
@@ -77,6 +80,7 @@ extension SyntaxEditorUITests {
         #expect(undo.canUndo)
         undo.undo()
         #expect(context.model.text == source)
+        #expect(inputClient.textDidChangeCount >= 2)
     }
 
     @Test("UIKit comparison rulers mark empty documents and EOF boundaries")

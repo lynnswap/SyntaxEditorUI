@@ -343,8 +343,9 @@ extension SyntaxEditorUITests {
 
     @MainActor
     private func visibleIOSDeletedLine(in view: UITextView, editor: SyntaxEditorView) throws -> Int {
-        var point = view.convert(editor.adjustedVisibleContentRect.origin, from: editor)
-        point.x = view.bounds.minX + 1
+        let point = view.textInputView.convert(
+            CGPoint(x: view.frame.minX + 1, y: editor.adjustedVisibleContentRect.minY), from: editor
+        )
         let position = try #require(view.closestPosition(to: point))
         let offset = view.offset(from: view.beginningOfDocument, to: position)
         return (view.text as NSString).lineRange(for: NSRange(location: offset, length: 0)).location

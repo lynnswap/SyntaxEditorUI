@@ -147,11 +147,9 @@ final class SyntaxEditorComparisonDeletedTextView: UITextView, UITextViewDelegat
               let end = comparisonContentStorage.location(location, offsetBy: 1),
               let range = NSTextRange(location: location, end: end) else { return nil }
         comparisonLayoutManager.ensureLayout(for: range)
-        _ = comparisonLayoutManager.textViewportLayoutController.relocateViewport(to: location)
-        guard let fragment = comparisonLayoutManager.textLayoutFragment(for: location),
-              let line = fragment.textLineFragment(for: location, isUpstreamAffinity: false) else { return nil }
-        return CGRect(x: 0, y: fragment.layoutFragmentFrame.minY + line.typographicBounds.minY,
-                      width: bounds.width, height: line.typographicBounds.height)
+        guard let position = position(from: beginningOfDocument, offset: offset) else { return nil }
+        // UITextInput geometry belongs to its input view, which can be an internal canvas.
+        return convert(caretRect(for: position), from: textInputView)
     }
 
     func textViewDidChangeSelection(_ textView: UITextView) {

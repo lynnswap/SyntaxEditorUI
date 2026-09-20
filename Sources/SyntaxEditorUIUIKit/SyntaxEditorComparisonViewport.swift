@@ -144,7 +144,12 @@ final class SyntaxEditorComparisonViewport {
     private func willLayout(_ side: Side) {
         guard !isAdjusting else { return }
         isAdjusting = true
-        layoutAnchors[side] = preferredAnchor(side)
+        let anchor = side == .modified ? pendingComparisonAnchor ?? preferredAnchor(side) : preferredAnchor(side)
+        if side == .modified, comparison?.displayedPresentation == .inline,
+           comparison?.hasUnappliedComparisonContent == true, pendingComparisonAnchor == nil {
+            pendingComparisonAnchor = anchor
+        }
+        layoutAnchors[side] = anchor
         isAdjusting = false
     }
 
@@ -230,9 +235,7 @@ final class SyntaxEditorComparisonViewport {
             }
             guard let y else { return }
             let before = editor.contentOffset.y
-            // Keep the restored line on the visible side of a fractional pixel boundary.
-            let scale = max(1, editor.traitCollection.displayScale)
-            scroll(editor, to: ceil(y * scale) / scale)
+            scroll(editor, to: y.nextUp)
             if abs(before - editor.contentOffset.y) < 0.25 { break }
         }
     }

@@ -84,15 +84,15 @@ final class SyntaxEditorInlineComparisonLayout {
     }
 
     func referencePosition(atY y: CGFloat) -> ReferencePosition? {
-        guard let originalRevision else { return nil }
+        guard let editor, let originalRevision else { return nil }
         for block in blocks {
-            guard let view = block.view, let frame = block.frame,
-                  y >= frame.minY + 4, y < frame.maxY - 4,
-                  let position = view.closestPosition(to: CGPoint(x: view.bounds.minX + 1, y: y - frame.minY - 4)) else { continue }
+            guard let view = block.view, y >= view.frame.minY, y < view.frame.maxY else { continue }
+            let point = view.textInputView.convert(CGPoint(x: view.frame.minX + 1, y: y), from: editor)
+            guard let position = view.closestPosition(to: point) else { continue }
             let offset = min(view.offset(from: view.beginningOfDocument, to: position), max(0, block.change.originalRange.length - 1))
+            let caret = view.textInputView.convert(view.caretRect(for: position), to: editor)
             return ReferencePosition(offset: block.change.originalRange.location + offset,
-                                     delta: y - frame.minY - 4 - view.caretRect(for: position).minY,
-                                     revision: originalRevision)
+                                     delta: y - caret.minY, revision: originalRevision)
         }
         return nil
     }
@@ -102,16 +102,15 @@ final class SyntaxEditorInlineComparisonLayout {
     }
 
     func referenceY(for position: ReferencePosition) -> CGFloat? {
-        guard originalRevision == position.revision,
+        guard let editor, originalRevision == position.revision,
               let block = blocks.first(where: { NSLocationInRange(position.offset, $0.change.originalRange) }),
-              let view = block.view, let frame = block.frame,
+              let view = block.view,
               let local = view.reveal(offset: position.offset - block.change.originalRange.location) else { return nil }
-        return frame.minY + 4 + local.minY + position.delta
+        return view.convert(CGPoint(x: 0, y: local.minY + position.delta), to: editor).y
     }
 
     func frame(forChangeAt index: Int) -> CGRect? {
-        guard let block = blocks.first(where: { $0.index == index }), block.view != nil else { return nil }
-        return block.frame
+        blocks.first(where: { $0.index == index })?.frame
     }
 
     func changeIndex(atY y: CGFloat) -> Int? {
@@ -159,6 +158,7 @@ final class SyntaxEditorInlineComparisonLayout {
         if geometryChanged {
             let lineHeight = max(1, ceil(next.font.lineHeight))
             for block in blocks {
+                block.frame = nil
                 block.estimatedSize = block.metrics.estimatedDocumentSize(
                     minimumSize: CGSize(width: next.width, height: 0),
                     lineWrappingEnabled: next.wraps,
@@ -265,10 +265,8 @@ final class SyntaxEditorInlineComparisonLayout {
                 for line in fragment.textLineFragments where line.characterRange.length > 0 {
                     let number = block.metrics.lineOffsets.lineIndex(containingUTF16Offset: start + line.characterRange.location)
                     guard seen.insert(number).inserted else { continue }
-                    let point = editor.convert(
-                        CGPoint(x: 0, y: fragment.layoutFragmentFrame.minY + line.typographicBounds.minY),
-                        from: view
-                    )
+                    guard let position = view.position(from: view.beginningOfDocument, offset: start + line.characterRange.location) else { continue }
+                    let point = view.textInputView.convert(view.caretRect(for: position).origin, to: editor)
                     marks.append(LineMark(originalLine: block.change.originalLines.lowerBound + number,
                                           changeIndex: block.index, origin: point))
                 }
