@@ -7,6 +7,7 @@ final class SyntaxEditorComparisonDeletedTextView: UITextView, UITextViewDelegat
     var onSelectionChange: ((NSRange) -> Void)?
     /// A native scroll request, expressed within the complete deleted block.
     var onScroll: ((CGPoint) -> Void)?
+    var onFind: ((Selector, Any?) -> Void)?
     var isChangeSelected = false {
         didSet {
             guard isChangeSelected != oldValue else { return }
@@ -141,6 +142,16 @@ final class SyntaxEditorComparisonDeletedTextView: UITextView, UITextViewDelegat
         return size
     }
 
+    func reveal(offset: Int) -> CGRect? {
+        guard let location = comparisonContentStorage.location(comparisonContentStorage.documentRange.location, offsetBy: offset),
+              let end = comparisonContentStorage.location(location, offsetBy: 1),
+              let range = NSTextRange(location: location, end: end) else { return nil }
+        comparisonLayoutManager.ensureLayout(for: range)
+        guard let position = position(from: beginningOfDocument, offset: offset) else { return nil }
+        // UITextInput geometry belongs to its input view, which can be an internal canvas.
+        return convert(caretRect(for: position), from: textInputView)
+    }
+
     func textViewDidChangeSelection(_ textView: UITextView) {
         guard !isApplyingPresentation else { return }
         onSelectionChange?(NSRange(
@@ -164,5 +175,32 @@ final class SyntaxEditorComparisonDeletedTextView: UITextView, UITextViewDelegat
         backgroundColor = color.withAlphaComponent(isChangeSelected ? 0.16 : 0.12)
     }
 
+    override func find(_ sender: Any?) {
+        onFind?(#selector(UIResponderStandardEditActions.find(_:)), sender)
+    }
+
+    override func findNext(_ sender: Any?) {
+        onFind?(#selector(UIResponderStandardEditActions.findNext(_:)), sender)
+    }
+
+    override func findPrevious(_ sender: Any?) {
+        onFind?(#selector(UIResponderStandardEditActions.findPrevious(_:)), sender)
+    }
+
+    override func useSelectionForFind(_ sender: Any?) {
+        onFind?(#selector(UIResponderStandardEditActions.useSelectionForFind(_:)), sender)
+    }
+
+    override func canPerformAction(_ action: Selector, withSender sender: Any?) -> Bool {
+        if action == #selector(UIResponderStandardEditActions.find(_:))
+            || action == #selector(UIResponderStandardEditActions.findNext(_:))
+            || action == #selector(UIResponderStandardEditActions.findPrevious(_:)) {
+            return onFind != nil
+        }
+        if action == #selector(UIResponderStandardEditActions.useSelectionForFind(_:)) {
+            return onFind != nil && selectedRange.length > 0
+        }
+        return super.canPerformAction(action, withSender: sender)
+    }
 }
 #endif

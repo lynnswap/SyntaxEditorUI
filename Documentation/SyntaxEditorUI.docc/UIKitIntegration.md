@@ -46,9 +46,39 @@ Indirect input is enabled by default on the iOS versions supported by this packa
 
 See Apple's [indirect input setting](https://developer.apple.com/documentation/bundleresources/information-property-list/uiapplicationsupportsindirectinputevents).
 
+## Compare with a reference document
+
+Keep a comparison model alongside the document model in your app's persistent state:
+
+```swift
+let document = SyntaxEditorModel(text: currentText, language: .swift)
+let comparison = SyntaxEditorComparisonModel(
+    originalText: referenceText,
+    modified: document,
+    presentation: .inline
+)
+let controller = SyntaxEditorComparisonViewController(model: comparison)
+```
+
+Embed this controller using the same UIKit containment steps as a regular editor controller. You can also use ``SyntaxEditorComparisonView-3ze46`` directly. Its `modifiedEditor` is the existing text input and scroll view, available for native configuration.
+
+Set `comparison.presentation` to `.changeMarkers`, `.inline`, or `.sideBySide`. The modified editor retains its identity, text selection, marked input, and undo history across these changes. The read-only reference follows the document's language, theme, font size, and wrapping settings.
+
+Use `selectNextChange()` and `selectPreviousChange()` to highlight and reveal a change without replacing the modified text selection. `changeCount` is `nil` while the current texts are being compared. The view removes old difference decorations until the new result is available.
+
+Inline deletions use native selectable text views. The parent owns drag scrolling, while native selection autoscroll follows the complete deleted block. Find from a deletion opens the full reference pane. Hiding that pane dismisses its Find interface and returns focus to the modified editor.
+
+The comparison preserves the viewed text position across geometry changes and comparison updates; independent scrolling while a calculation is pending replaces that saved position. Your app supplies the reference text and handles loading and saving. The comparison performs no file or source-control operations.
+
 ## Topics
 
 ### Native editor
 
 - ``SyntaxEditorView-6lnwr``
 - ``SyntaxEditorViewController-j7tv``
+
+### Document comparison
+
+- ``SyntaxEditorComparisonView-3ze46``
+- ``SyntaxEditorComparisonViewController-69rtq``
+- ``SyntaxEditorComparisonModel``

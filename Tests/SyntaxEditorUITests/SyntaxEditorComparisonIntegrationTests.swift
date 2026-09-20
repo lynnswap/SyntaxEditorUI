@@ -37,7 +37,7 @@ extension SyntaxEditorUITests {
         let prefix = (0..<30).map { "prefix \($0)\n" }.joined()
         let suffix = (0..<100).map { "suffix \($0)\n" }.joined()
         let source = prefix + "new content\n" + suffix
-        let original = prefix + String(repeating: "old content ", count: 35) + "\n" + suffix
+        let original = prefix + String(repeating: "old content ", count: 350) + "\n" + suffix
         let context = SyntaxEditorTestContext(text: source, language: .plainText, lineWrappingEnabled: true)
         let (view, window) = try await makeComparisonIntegrationFixture(original: original, context: context)
         defer { window.orderOut(nil) }

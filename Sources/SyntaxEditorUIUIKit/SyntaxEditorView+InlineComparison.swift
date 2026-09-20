@@ -58,7 +58,7 @@ extension SyntaxEditorView: @preconcurrency NSTextLayoutManagerDelegate {
             if let fragment = layoutManager.textLayoutFragment(for: range.location),
                !fragments.contains(where: { $0 === fragment }) { fragments.append(fragment) }
         }
-        let caret = storage.length == 0 ? caretRect(for: TextPosition(offset: 0)) : nil
+        let caret = storage.length == 0 ? caretRect(forUTF16Location: 0) : nil
         return inlineComparisonLayout.layoutDeletedViews(
             in: fragments, viewport: adjustedVisibleContentRect, emptyDocumentCaretFrame: caret
         )

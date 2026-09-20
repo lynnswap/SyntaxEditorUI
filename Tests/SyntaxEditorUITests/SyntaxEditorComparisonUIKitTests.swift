@@ -27,7 +27,7 @@ extension SyntaxEditorUITests {
         #expect(await ready.waitUntilValue(true))
         await settleIOSComparison(view)
         let selection = editor.selectedRange
-        for presentation: SyntaxEditorComparisonModel.Presentation in [.changeMarkers, .sideBySide, .changeMarkers] {
+        for presentation: SyntaxEditorComparisonModel.Presentation in [.changeMarkers, .sideBySide, .inline] {
             try await changeIOSComparison(view, to: presentation)
             #expect(view.modifiedEditor === editor)
             #expect(editor.superview === parent)
@@ -45,7 +45,7 @@ extension SyntaxEditorUITests {
         #expect(editor.text.utf16.elementsEqual((source + "!").utf16))
     }
 
-    @Test("Comparison presentation switches preserve iOS marked text through commit and undo")
+    @Test("Simulated UIKit marked input survives comparison presentation changes and undo")
     @MainActor
     func iosComparisonPreservesMarkedText() async throws {
         let source = "current: "
@@ -53,22 +53,25 @@ extension SyntaxEditorUITests {
         let (view, window) = try await makeIOSComparison(original: "reference", context: context)
         defer { closeIOSComparison(window) }
         let editor = view.modifiedEditor
-        #expect(editor.becomeFirstResponder())
+        #expect(!editor.isFirstResponder)
         editor.selectedRange = NSRange(location: source.utf16.count, length: 0)
         let revision = context.model.textRevision + 1
         let delivery = try #require(view.comparisonDeliveryForTesting)
         let ready = await delivery.values { context.model.textRevision == revision && view.model.changeCount != nil }
+        // Drive the IME protocol without starting a separate system input session.
+        let inputClient = SyntaxEditorUITestInputDelegate()
+        editor.inputDelegate = inputClient
         editor.setMarkedText("かな", selectedRange: NSRange(location: 2, length: 0))
         #expect(await ready.waitUntilValue(true))
         await settleIOSComparison(view)
         let marked = try #require(editor.markedTextRange as? SyntaxEditorView.TextRange).nsRange
         let selection = editor.selectedRange
-        for presentation: SyntaxEditorComparisonModel.Presentation in [.sideBySide, .changeMarkers] {
+        for presentation: SyntaxEditorComparisonModel.Presentation in [.sideBySide, .changeMarkers, .inline] {
             try await changeIOSComparison(view, to: presentation)
             #expect((editor.markedTextRange as? SyntaxEditorView.TextRange)?.nsRange == marked)
             #expect(editor.selectedRange == selection)
             #expect(editor.text == source + "かな")
-            #expect(editor.isFirstResponder)
+            #expect(!editor.isFirstResponder)
         }
         editor.insertText("仮名")
         #expect(editor.markedTextRange == nil)
@@ -77,6 +80,7 @@ extension SyntaxEditorUITests {
         #expect(undo.canUndo)
         undo.undo()
         #expect(context.model.text == source)
+        #expect(inputClient.textDidChangeCount >= 2)
     }
 
     @Test("UIKit comparison rulers mark empty documents and EOF boundaries")
@@ -162,7 +166,7 @@ extension SyntaxEditorUITests {
         #expect(view.modifiedLayout.rulerView.frame == rulerFrame)
         #expect(editor.text == text)
         #expect(editor.textContainer.size.width <= editor.bounds.width - editor.adjustedContentInset.left - editor.adjustedContentInset.right + 1)
-        #expect(!view.modifiedLayout.rulerView.isUserInteractionEnabled)
+        #expect(view.modifiedLayout.rulerView.isUserInteractionEnabled)
         #expect(editor.hitTest(CGPoint(x: editor.bounds.midX, y: editor.bounds.midY), with: nil) === editor)
     }
 

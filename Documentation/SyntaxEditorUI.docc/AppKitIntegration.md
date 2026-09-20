@@ -59,7 +59,7 @@ Use `selectNextChange()` and `selectPreviousChange()` for navigation. Both retur
 
 Inline deleted text supports native selection and copying. Find from a deleted block opens the full reference pane. Each pane in side-by-side presentation has its own Find interface.
 
-The view preserves the viewed text position across geometry changes and comparison updates. Scrolling while a calculation is pending replaces the saved position. Access `controller.editorView.modifiedEditor` to configure its native scroll-view settings, or use ``SyntaxEditorComparisonView`` directly in an existing view hierarchy.
+The view preserves the viewed text position across geometry changes and comparison updates. Scrolling while a calculation is pending replaces the saved position. Access `controller.editorView.modifiedEditor` to configure its native scroll-view settings, or use ``SyntaxEditorComparisonView-2w0hh`` directly in an existing view hierarchy.
 
 ## Topics
 
@@ -70,6 +70,6 @@ The view preserves the viewed text position across geometry changes and comparis
 
 ### Document comparison
 
-- ``SyntaxEditorComparisonView``
-- ``SyntaxEditorComparisonViewController``
+- ``SyntaxEditorComparisonView-2w0hh``
+- ``SyntaxEditorComparisonViewController-5esrd``
 - ``SyntaxEditorComparisonModel``

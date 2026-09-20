@@ -1,10 +1,10 @@
-#if canImport(AppKit)
-import AppKit
+#if canImport(UIKit)
+import UIKit
 import SyntaxEditorCore
 import SyntaxEditorUICommon
 
 @MainActor
-final class SyntaxEditorComparisonViewport: NSObject {
+final class SyntaxEditorComparisonViewport {
     typealias Side = EditorComparisonGeometry.Side
     private weak var comparison: SyntaxEditorComparisonView?
     private var isAdjusting = false
@@ -22,7 +22,7 @@ final class SyntaxEditorComparisonViewport: NSObject {
         let anchor: Anchor
     }
     private struct Geometry: Equatable {
-        let font: NSFont?
+        let font: UIFont
         let width: CGFloat
         let wraps: Bool
         let documentSize: CGSize
@@ -35,19 +35,18 @@ final class SyntaxEditorComparisonViewport: NSObject {
 
     init(comparison: SyntaxEditorComparisonView) {
         self.comparison = comparison
-        super.init()
         for side: Side in [.modified, .original] {
             guard let editor = editor(for: side) else { continue }
-            previousBounds[side] = editor.contentView.bounds
-            editor.textView.comparisonWillLayout = { [weak self] in self?.willLayout(side) }
-            editor.textView.comparisonDidLayout = { [weak self] changed in self?.didLayout(side, changed: changed) }
-            editor.contentView.postsBoundsChangedNotifications = true
-            NotificationCenter.default.addObserver(self, selector: #selector(boundsDidChange(_:)),
-                                                   name: NSView.boundsDidChangeNotification, object: editor.contentView)
+            previousBounds[side] = editor.bounds
+            editor.comparisonWillLayout = { [weak self] in self?.willLayout(side) }
+            editor.comparisonDidLayout = { [weak self] changed in self?.didLayout(side, changed: changed) }
+            let previous = editor.didChangeComparisonViewport
+            editor.didChangeComparisonViewport = { [weak self] in
+                previous?()
+                self?.boundsDidChange(side)
+            }
         }
     }
-
-    isolated deinit { NotificationCenter.default.removeObserver(self) }
 
     func reset() {
         driver = .modified
@@ -78,8 +77,8 @@ final class SyntaxEditorComparisonViewport: NSObject {
         guard comparison.model === model else { recordAll(); return }
         let presentation = comparison.displayedPresentation
         if presentation != .sideBySide { driver = .modified }
-        comparison.modifiedEditor.textView.layoutVisibleViewport()
-        if presentation == .sideBySide { comparison.originalEditor.textView.layoutVisibleViewport() }
+        comparison.modifiedEditor.layoutTextIfNeeded()
+        if presentation == .sideBySide { comparison.originalEditor.layoutTextIfNeeded() }
         if presentation == .sideBySide, let original { restore(original, in: .original) }
         if let modified {
             let current = rebased(modified, in: comparison.modifiedEditor)
@@ -98,8 +97,8 @@ final class SyntaxEditorComparisonViewport: NSObject {
 
     func layoutDidComplete() {
         guard !isAdjusting, let comparison,
-              comparison.modifiedEditor.contentView.bounds.width > 0,
-              comparison.modifiedEditor.contentView.bounds.height > 0 else { return }
+              comparison.modifiedEditor.bounds.width > 0,
+              comparison.modifiedEditor.bounds.height > 0 else { return }
         isAdjusting = true
         defer { isAdjusting = false }
         if let index = pendingReveal, let changes = comparison.model.changes, changes.indices.contains(index) {
@@ -117,17 +116,12 @@ final class SyntaxEditorComparisonViewport: NSObject {
         recordAll()
     }
 
-    @objc private func boundsDidChange(_ notification: Notification) {
-        guard let comparison, let clip = notification.object as? NSClipView else { return }
-        let side: Side
-        if clip === comparison.modifiedEditor.contentView { side = .modified }
-        else if clip === comparison.originalEditor.contentView { side = .original }
-        else { return }
+    private func boundsDidChange(_ side: Side) {
+        guard let comparison, let editor = editor(for: side) else { return }
         let oldBounds = previousBounds[side]
-        previousBounds[side] = clip.bounds
-        guard !isAdjusting, oldBounds?.minY != clip.bounds.minY, let editor = editor(for: side) else { return }
-        if editor.textView.isLayingOutViewport || editor.isApplyingModel || editor.isApplyingUndoRedo
-            || editor.pendingHighlightEdit != nil { return }
+        previousBounds[side] = editor.bounds
+        guard !isAdjusting, oldBounds?.minY != editor.bounds.minY else { return }
+        if editor.isLayingOutText || editor.isApplyingModel || editor.isApplyingUndoRedo { return }
         if let prior = geometries[side], prior != geometry(editor) { return }
         snapshots[side] = nil
         if side == .modified { pendingComparisonAnchor = nil }
@@ -135,16 +129,16 @@ final class SyntaxEditorComparisonViewport: NSObject {
             driver = side
             isAdjusting = true
             defer { isAdjusting = false }
-            editor.textView.layoutVisibleViewport()
+            editor.layoutTextIfNeeded()
             synchronize(from: side)
             recordAll()
         }
     }
 
     private func geometry(_ editor: SyntaxEditorView) -> Geometry {
-        Geometry(font: editor.textView.font, width: editor.textContainer.size.width,
-                 wraps: !editor.textView.isHorizontallyResizable,
-                 documentSize: editor.textView.bounds.size, viewportSize: editor.contentView.bounds.size)
+        Geometry(font: editor.font, width: editor.textContainer.size.width,
+                 wraps: editor.lastAppliedLineWrappingEnabled,
+                 documentSize: editor.contentSize, viewportSize: editor.adjustedVisibleContentSize)
     }
 
     private func willLayout(_ side: Side) {
@@ -174,28 +168,27 @@ final class SyntaxEditorComparisonViewport: NSObject {
     }
 
     private func preferredAnchor(_ side: Side) -> Anchor? {
-        guard let editor = editor(for: side), !editor.contentView.bounds.isEmpty else { return nil }
-        if let snapshot = snapshots[side], snapshot.y == editor.contentView.bounds.minY {
+        guard let editor = editor(for: side), !editor.bounds.isEmpty else { return nil }
+        if let snapshot = snapshots[side], snapshot.y == editor.contentOffset.y {
             return snapshot.anchor
         }
         return capture(side)
     }
 
     private func capture(_ side: Side) -> Anchor? {
-        guard let comparison, let editor = editor(for: side), !editor.contentView.bounds.isEmpty,
+        guard let comparison, let editor = editor(for: side), !editor.bounds.isEmpty,
               editor.lastAppliedDocumentRevision == editor.model.textRevision,
-              !editor.isApplyingModel, !editor.isApplyingUndoRedo, editor.pendingHighlightEdit == nil else { return nil }
-        let clip = editor.contentView
-        let visible = editor.textView.convert(clip.bounds, from: clip)
-        if clip.bounds.minY <= -max(0, clip.contentInsets.top) { return .top }
-        var bottom = clip.bounds
-        bottom.origin.y = editor.textView.bounds.maxY + clip.contentInsets.bottom
-        if abs(clip.bounds.minY - clip.constrainBoundsRect(bottom).minY) < 0.5 { return .bottom }
+              !editor.isApplyingModel, !editor.isApplyingUndoRedo else { return nil }
+        let visible = editor.adjustedVisibleContentRect
+        let insets = editor.adjustedContentInset
+        if editor.contentOffset.y <= -max(0, insets.top) { return .top }
+        let bottom = max(-insets.top, editor.contentSize.height - editor.bounds.height + insets.bottom)
+        if abs(editor.contentOffset.y - bottom) < 0.5 { return .bottom }
         if side == .modified, let reference = comparison.inlineLayout.referencePosition(atY: visible.minY) {
             guard reference.revision == comparison.model.original.textRevision else { return nil }
             return .reference(reference)
         }
-        let offset = editor.textView.characterIndex(at: CGPoint(x: editor.textContainer.lineFragmentPadding + 1, y: visible.minY))
+        guard let offset = characterOffset(at: visible.minY, in: editor) else { return nil }
         guard let caret = frame(NSRange(location: offset, length: 0), in: editor) else { return nil }
         return .document(offset: offset, delta: visible.minY - caret.minY,
                          revision: editor.model.textRevision, source: editor.model.text)
@@ -203,7 +196,7 @@ final class SyntaxEditorComparisonViewport: NSObject {
 
     private func record(_ side: Side) {
         guard let editor = editor(for: side), let anchor = capture(side) else { return }
-        snapshots[side] = Snapshot(y: editor.contentView.bounds.minY, anchor: anchor)
+        snapshots[side] = Snapshot(y: editor.contentOffset.y, anchor: anchor)
         geometries[side] = geometry(editor)
     }
 
@@ -213,14 +206,14 @@ final class SyntaxEditorComparisonViewport: NSObject {
     }
 
     private func restore(_ anchor: Anchor, in side: Side) {
-        guard let comparison, let editor = editor(for: side), !editor.contentView.bounds.isEmpty else { return }
+        guard let comparison, let editor = editor(for: side), !editor.bounds.isEmpty else { return }
         for _ in 0..<3 {
             let y: CGFloat?
             switch anchor {
             case .top:
-                y = -max(0, editor.contentView.contentInsets.top)
+                y = 0
             case .bottom:
-                y = editor.textView.bounds.maxY + editor.contentView.contentInsets.bottom
+                y = editor.contentSize.height + editor.adjustedContentInset.bottom
             case let .document(offset, delta, revision, source):
                 let projected = projectedOffset(offset, revision: revision, source: source, in: editor)
                 y = frame(NSRange(location: projected, length: 0), in: editor).map { $0.minY + delta }
@@ -241,10 +234,9 @@ final class SyntaxEditorComparisonViewport: NSObject {
                 y = comparison.inlineLayout.referenceY(for: position)
             }
             guard let y else { return }
-            let before = editor.contentView.bounds.minY
-            // Avoid crossing the preceding line through roundoff without rounding fractional scroll positions.
+            let before = editor.contentOffset.y
             scroll(editor, to: y.nextUp)
-            if abs(before - editor.contentView.bounds.minY) < 0.25 { break }
+            if abs(before - editor.contentOffset.y) < 0.25 { break }
         }
     }
 
@@ -254,7 +246,7 @@ final class SyntaxEditorComparisonViewport: NSObject {
         else if let change = editor.model.latestTextChange, change.textRevision == revision + 1,
                 change.kind == .incremental {
             projected = Self.project(offset, through: change.replacements)
-        } else if let replacement = SyntaxEditorTextChange.Replacement.singleReplacement(from: source, to: editor.textView.string) {
+        } else if let replacement = SyntaxEditorTextChange.Replacement.singleReplacement(from: source, to: editor.storage.string) {
             projected = Self.project(offset, through: [replacement])
         } else { projected = offset }
         return projected
@@ -265,7 +257,7 @@ final class SyntaxEditorComparisonViewport: NSObject {
               editor.lastAppliedDocumentRevision == editor.model.textRevision,
               !editor.isApplyingModel, !editor.isApplyingUndoRedo else { return anchor }
         return .document(offset: projectedOffset(offset, revision: revision, source: source, in: editor),
-                         delta: delta, revision: editor.lastAppliedDocumentRevision, source: editor.textView.string)
+                         delta: delta, revision: editor.lastAppliedDocumentRevision, source: editor.storage.string)
     }
 
     private static func project(_ offset: Int, through edits: [SyntaxEditorTextChange.Replacement]) -> Int {
@@ -290,7 +282,7 @@ final class SyntaxEditorComparisonViewport: NSObject {
               let source = editor(for: side), let destination = editor(for: side == .modified ? .original : .modified),
               source.lastAppliedDocumentRevision == source.model.textRevision,
               destination.lastAppliedDocumentRevision == destination.model.textRevision else { return }
-        let y = source.textView.convert(source.contentView.bounds.origin, from: source.contentView).y
+        let y = source.adjustedVisibleContentRect.minY
         if y < 0 { scroll(destination, to: y); return }
         guard let line = logicalLine(at: y, in: source) else { return }
         let counterpart = EditorComparisonGeometry.counterpartLine(line, from: side, changes: changes)
@@ -313,7 +305,7 @@ final class SyntaxEditorComparisonViewport: NSObject {
 
     @discardableResult
     private func reveal(_ range: NSRange, index: Int, in editor: SyntaxEditorView, isModified: Bool) -> Bool {
-        let before = editor.contentView.bounds.origin
+        let before = editor.contentOffset
         func displayedFrame() -> CGRect? {
             let inlineFrame = isModified && comparison?.displayedPresentation == .inline
                 ? comparison?.inlineLayout.frame(forChangeAt: index) : nil
@@ -323,53 +315,61 @@ final class SyntaxEditorComparisonViewport: NSObject {
             guard let text = frame(range, in: editor) else { return inlineFrame }
             return inlineFrame.map { $0.union(text) } ?? text
         }
-        let visible = editor.textView.convert(editor.contentView.bounds, from: editor.contentView)
+        let visible = editor.adjustedVisibleContentRect
         if let displayed = displayedFrame(), displayed.minY < visible.maxY, displayed.maxY > visible.minY { return false }
-        let offset = min(range.location, max(0, editor.textStorage.length - 1))
-        if let location = editor.textView.textLocation(forUTF16Offset: offset) {
+        let offset = min(range.location, max(0, editor.storage.length - 1))
+        if let location = editor.textLocation(forUTF16Offset: offset) {
             let estimate = editor.layoutManager.textViewportLayoutController.relocateViewport(to: location)
-            scroll(editor, to: estimate)
-            editor.textView.layoutVisibleViewport()
+            scroll(editor, to: estimate + editor.textContentView.frame.minY)
+            editor.layoutTextIfNeeded()
         }
         if let target = displayedFrame() {
-            editor.textView.scrollToVisible(CGRect(x: target.minX, y: target.minY, width: 1,
+            editor.scrollContentRectToVisible(CGRect(x: target.minX, y: target.minY, width: 1,
                                                    height: min(target.height, visible.height)))
-            editor.textView.layoutVisibleViewport()
+            editor.layoutTextIfNeeded()
         }
-        return before != editor.contentView.bounds.origin
+        return before != editor.contentOffset
     }
 
     func frame(_ range: NSRange, in editor: SyntaxEditorView) -> CGRect? {
-        let range = SyntaxEditorRangeUtilities.clampedRange(range, utf16Length: editor.textStorage.length)
-        if range.length == 0 { return editor.textView.caretRect(forUTF16Location: range.location) }
-        guard let first = editor.textView.rectsForCharacterRange(NSRange(location: range.location, length: 1)).first,
-              let last = editor.textView.rectsForCharacterRange(NSRange(location: range.upperBound - 1, length: 1)).last else { return nil }
+        let range = SyntaxEditorRangeUtilities.clampedRange(range, utf16Length: editor.storage.length)
+        if range.length == 0 { return editor.caretRect(forUTF16Location: range.location) }
+        let origin = CGPoint(x: -editor.textContentView.frame.minX, y: -editor.textContentView.frame.minY)
+        let rects = TextLayoutGeometry.standardRects(
+            layoutManager: editor.layoutManager, rangeConverter: editor.textSystem.rangeConverter,
+            ranges: [NSRange(location: range.location, length: 1), NSRange(location: range.upperBound - 1, length: 1)],
+            offsetBy: origin
+        )
+        guard let first = rects.first, let last = rects.last else { return nil }
         return first.union(last)
     }
 
     func lineFrame(_ index: Int, in editor: SyntaxEditorView) -> CGRect? {
-        let offsets = editor.textView.lineMetrics.lineOffsets
+        let offsets = editor.lineMetrics.lineOffsets
         let line = min(max(0, index), offsets.lineCount - 1)
         let start = offsets.lineStartOffset(at: line)
         return frame(NSRange(location: start, length: offsets.lineEndOffset(at: line) - start), in: editor)
     }
 
     func logicalLine(at y: CGFloat, in editor: SyntaxEditorView) -> CGFloat? {
-        let offset = editor.textView.characterIndex(at: CGPoint(x: editor.textContainer.lineFragmentPadding + 1, y: y))
-        let index = editor.textView.lineMetrics.lineOffsets.lineIndex(containingUTF16Offset: offset)
+        guard let offset = characterOffset(at: y, in: editor) else { return nil }
+        let index = editor.lineMetrics.lineOffsets.lineIndex(containingUTF16Offset: offset)
         guard let row = lineFrame(index, in: editor) else { return nil }
         return CGFloat(index) + min(max((y - row.minY) / max(1, row.height), 0), 1)
     }
 
+    private func characterOffset(at y: CGFloat, in editor: SyntaxEditorView) -> Int? {
+        guard let position = editor.closestTextPosition(to: CGPoint(x: editor.textContentView.frame.minX + editor.container.lineFragmentPadding + 1, y: y), constrainedTo: nil) else { return nil }
+        return editor.offset(from: editor.beginningOfDocument, to: position)
+    }
+
     private func scroll(_ editor: SyntaxEditorView, to y: CGFloat) {
-        let clip = editor.contentView
-        var proposed = clip.bounds
-        proposed.origin.y = clip.convert(CGPoint(x: 0, y: y), from: editor.textView).y
-        let constrained = clip.constrainBoundsRect(proposed)
-        guard abs(constrained.minY - clip.bounds.minY) > 0.25 else { return }
-        clip.scroll(to: constrained.origin)
-        editor.reflectScrolledClipView(clip)
-        editor.textView.layoutVisibleViewport()
+        let insets = editor.adjustedContentInset
+        let maximum = max(-insets.top, editor.contentSize.height - editor.bounds.height + insets.bottom)
+        let target = min(max(-insets.top, y - insets.top), maximum)
+        guard abs(target - editor.contentOffset.y) > 0.25 else { return }
+        editor.setContentOffset(CGPoint(x: editor.contentOffset.x, y: target), animated: false)
+        editor.layoutTextIfNeeded()
     }
 }
 #endif

@@ -48,6 +48,8 @@ public final class SyntaxEditorComparisonView: NSView {
         )
     }
 
+    var hasUnappliedComparisonContent: Bool { displayedContent != currentContentIdentity }
+
     var comparisonDeliveryForTesting: PortableObservationTracking.Token? { comparisonObservation }
     var comparisonConfigurationDeliveryForTesting: PortableObservationTracking.Token? { configurationObservation }
     var displayedPresentation: SyntaxEditorComparisonModel.Presentation { displayedContent?.presentation ?? model.presentation }

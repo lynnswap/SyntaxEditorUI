@@ -9,6 +9,7 @@ final class SyntaxEditorComparisonTextLayout {
     enum Side { case original, modified }
 
     private weak var editor: SyntaxEditorView?
+    weak var comparison: SyntaxEditorComparisonView?
     let side: Side
     let rulerWidth: CGFloat = 58
     var rulerView: UIView { ruler }
@@ -39,7 +40,8 @@ final class SyntaxEditorComparisonTextLayout {
 
     func updateSelectedChange(_ index: Int?) {
         selectedChangeIndex = index
-        ruler.accessibilityValue = index.map { "Change \($0 + 1) of \(changes.count)" } ?? "\(changes.count) changes"
+        ruler.accessibilityValue = comparison?.model.changeCount == nil ? "Comparing documents"
+            : index.map { "Change \($0 + 1) of \(changes.count)" } ?? "\(changes.count) changes"
         layoutDidComplete()
         editor?.setNeedsDisplayForVisibleTextFragments()
     }
@@ -135,8 +137,11 @@ final class SyntaxEditorComparisonTextLayout {
             super.init(frame: .zero)
             clipsToBounds = true
             isOpaque = false
-            isUserInteractionEnabled = false
             isAccessibilityElement = true
+            accessibilityCustomActions = [
+                UIAccessibilityCustomAction(name: "Next change") { [weak layout] _ in layout?.comparison?.model.selectNextChange() ?? false },
+                UIAccessibilityCustomAction(name: "Previous change") { [weak layout] _ in layout?.comparison?.model.selectPreviousChange() ?? false },
+            ]
             accessibilityLabel = layout.side == .original ? "Reference line numbers and changes" : "Modified line numbers and changes"
         }
 
@@ -144,6 +149,17 @@ final class SyntaxEditorComparisonTextLayout {
 
         override func draw(_ rect: CGRect) {
             comparisonLayout?.drawRuler(self, dirtyRect: rect)
+        }
+
+        override func touchesEnded(_ touches: Set<UITouch>, with event: UIEvent?) {
+            guard let layout = comparisonLayout, let editor = layout.editor, let touch = touches.first else { return }
+            let point = touch.location(in: editor)
+            if let index = editor.inlineComparisonLayout?.changeIndex(atY: point.y) {
+                _ = layout.comparison?.model.selectChange(at: index)
+            } else if let position = editor.closestTextPosition(to: CGPoint(x: editor.textContentView.frame.minX + editor.container.lineFragmentPadding + 1, y: point.y), constrainedTo: nil),
+                      let index = layout.changeIndex(at: editor.offset(from: editor.beginningOfDocument, to: position)) {
+                _ = layout.comparison?.model.selectChange(at: index)
+            }
         }
     }
 
