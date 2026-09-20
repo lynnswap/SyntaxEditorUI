@@ -8,6 +8,7 @@ package final class DocumentLineMetrics {
 
     package var fullRebuildCount: Int { index.fullRebuildCount }
     package var lineCount: Int { index.lineCount }
+    package var lineOffsets: LineOffsetTable { index.lineOffsets }
 
     package init(source: String = "", tabWidth: Int) {
         index = LineMetricsIndex(source: source, tabWidth: tabWidth)
@@ -43,7 +44,9 @@ package final class DocumentLineMetrics {
         lineHeight: CGFloat,
         columnWidth: CGFloat,
         lineFragmentPadding: CGFloat,
-        textContainerInset: CGFloat = 0
+        textContainerInset: CGFloat = 0,
+        additionalHeight: CGFloat = 0,
+        minimumTextWidth: CGFloat = 0
     ) -> CGSize {
         let estimatedWidth = horizontalDocumentWidth(
             columnWidth: columnWidth,
@@ -57,8 +60,8 @@ package final class DocumentLineMetrics {
         let estimatedHeight = ceil(CGFloat(visualLineCount) * lineHeight)
 
         return CGSize(
-            width: max(minimumSize.width, estimatedWidth),
-            height: max(minimumSize.height, estimatedHeight)
+            width: max(minimumSize.width, estimatedWidth, minimumTextWidth),
+            height: max(minimumSize.height, estimatedHeight + additionalHeight)
         )
     }
 }

@@ -1180,6 +1180,7 @@
 
     private func invalidateSyntaxRenderingAttributes(for ranges: [NSRange]) {
       textView.invalidateSyntaxRenderingAttributes(for: ranges)
+      didUpdateSyntaxRendering?()
     }
 
     private func foregroundSuppressionRanges(textLength: Int) -> [NSRange] {

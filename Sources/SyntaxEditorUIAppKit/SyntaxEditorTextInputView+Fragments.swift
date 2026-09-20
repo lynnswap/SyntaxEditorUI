@@ -20,12 +20,17 @@ final class TextContentView: NSView {
     }
 
     override func hitTest(_ point: NSPoint) -> NSView? {
-        nil
+        let target = super.hitTest(point)
+        return target === self ? nil : target
     }
 }
 
 final class TextLayoutFragment: NSTextLayoutFragment {
     private(set) var lineFragmentDrawCountForTesting = 0
+    var comparisonTopMargin: CGFloat = 0
+    var comparisonBottomMargin: CGFloat = 0
+    override var topMargin: CGFloat { super.topMargin + comparisonTopMargin }
+    override var bottomMargin: CGFloat { super.bottomMargin + comparisonBottomMargin }
 
     override func draw(at point: CGPoint, in context: CGContext) {
         super.draw(at: point, in: context)
@@ -108,6 +113,7 @@ final class TextLayoutFragmentView: NSView {
     }
 
     override func draw(_ dirtyRect: NSRect) {
+        textInputView?.comparisonLayout?.drawBackground(for: layoutFragment, surfaceOrigin: frame.origin, in: bounds, dirtyRect: dirtyRect)
         drawFindCandidateHighlights(in: dirtyRect)
         if let selectionHighlightColor, !selectionHighlightRects.isEmpty {
             selectionHighlightColor.setFill()
@@ -122,14 +128,20 @@ final class TextLayoutFragmentView: NSView {
             }
         }
         guard let context = NSGraphicsContext.current?.cgContext else { return }
+        // TextKit's fragment coordinates still include comparison spacing.
+        let surfaceOffset = CGPoint(
+            x: frame.minX - layoutFragment.layoutFragmentFrame.minX,
+            y: frame.minY - layoutFragment.layoutFragmentFrame.minY
+        )
         textInputView?.validateSyntaxRenderingAttributesForDisplay(
             in: layoutFragment,
-            dirtyRectInFragment: dirtyRect
+            dirtyRectInFragment: dirtyRect.offsetBy(dx: surfaceOffset.x, dy: surfaceOffset.y)
         )
+        let drawingOrigin = CGPoint(x: -surfaceOffset.x, y: -surfaceOffset.y)
         if let syntaxLayoutFragment = layoutFragment as? SyntaxEditorTextInputView.TextLayoutFragment {
-            syntaxLayoutFragment.draw(at: .zero, in: context, dirtyRect: dirtyRect)
+            syntaxLayoutFragment.draw(at: drawingOrigin, in: context, dirtyRect: dirtyRect)
         } else {
-            layoutFragment.draw(at: .zero, in: context)
+            layoutFragment.draw(at: drawingOrigin, in: context)
         }
     }
 

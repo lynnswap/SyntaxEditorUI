@@ -176,6 +176,13 @@ public final class SyntaxEditorComparisonModel {
         return true
     }
 
+    @discardableResult
+    package func selectChange(at index: Int) -> Bool {
+        guard let changes, changes.indices.contains(index) else { return false }
+        selection = index
+        return true
+    }
+
     private func scheduleComparison(
         originalText: String,
         modifiedText: String,

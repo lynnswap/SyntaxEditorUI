@@ -293,7 +293,9 @@
         lineWrappingEnabled: lineWrappingEnabled,
         lineHeight: lineHeight,
         columnWidth: estimatedColumnWidth,
-        lineFragmentPadding: textContainer.lineFragmentPadding
+        lineFragmentPadding: textContainer.lineFragmentPadding,
+        additionalHeight: textView.comparisonLayout?.additionalHeight ?? 0,
+        minimumTextWidth: textView.comparisonLayout?.minimumTextWidth ?? 0
       )
     }
 

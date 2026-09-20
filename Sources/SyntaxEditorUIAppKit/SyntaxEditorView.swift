@@ -85,6 +85,7 @@
     var pendingUndoSelection: NSRange?
     var pendingHighlightEdit: PendingHighlightEdit?
     var pendingHighlightApplication: PendingHighlightApplication?
+    var didUpdateSyntaxRendering: (() -> Void)?
     var matchedBracketRanges: [NSRange] = []
     var visibleTextDisplayInvalidationCount = 0
     var fullTextDisplayInvalidationCount = 0

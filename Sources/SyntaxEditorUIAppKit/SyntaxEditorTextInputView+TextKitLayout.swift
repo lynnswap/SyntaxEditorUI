@@ -134,12 +134,18 @@ extension SyntaxEditorTextInputView {
             lineWrappingEnabled: lineWrappingEnabled,
             lineHeight: lineHeight,
             columnWidth: estimatedColumnWidth,
-            lineFragmentPadding: textContainer?.lineFragmentPadding ?? 0
+            lineFragmentPadding: textContainer?.lineFragmentPadding ?? 0,
+            additionalHeight: comparisonLayout?.additionalHeight ?? 0,
+            minimumTextWidth: comparisonLayout?.minimumTextWidth ?? 0
         )
     }
 
     func layoutVisibleViewport() {
         guard bounds.width > 0, bounds.height > 0 else { return }
+        if let scrollView = enclosingScrollView,
+           scrollView.contentView.bounds.width <= 0 || scrollView.contentView.bounds.height <= 0 {
+            return
+        }
 
         textLayoutManager.textViewportLayoutController.layoutViewport()
     }
@@ -267,7 +273,9 @@ extension SyntaxEditorTextInputView {
         textLayoutFragmentFor location: NSTextLocation,
         in textElement: NSTextElement
     ) -> NSTextLayoutFragment {
-        SyntaxEditorTextInputView.TextLayoutFragment(textElement: textElement, range: textElement.elementRange)
+        let fragment = SyntaxEditorTextInputView.TextLayoutFragment(textElement: textElement, range: textElement.elementRange)
+        comparisonLayout?.configureMargins(for: fragment)
+        return fragment
     }
 
     func setNeedsDisplayForContentRect(_ rect: NSRect) {
@@ -294,7 +302,18 @@ extension SyntaxEditorTextInputView {
         _ textViewportLayoutController: NSTextViewportLayoutController,
         configureRenderingSurfaceFor textLayoutFragment: NSTextLayoutFragment
     ) {
-        let layoutFragmentFrame = textLayoutFragment.layoutFragmentFrame
+        var layoutFragmentFrame = textLayoutFragment.layoutFragmentFrame
+        if comparisonLayout != nil {
+            // A margin can contain a whole deleted file. Keep that empty space
+            // out of the text surface's backing layer.
+            let lines = textLayoutFragment.textLineFragments
+            if let firstY = lines.map(\.typographicBounds.minY).min(),
+               let lastY = lines.map(\.typographicBounds.maxY).max() {
+                layoutFragmentFrame.origin.y += firstY
+                layoutFragmentFrame.size.height = lastY - firstY
+            }
+            layoutFragmentFrame.size.width = max(layoutFragmentFrame.width, bounds.width)
+        }
         let fragmentView: SyntaxEditorTextInputView.TextLayoutFragmentView
         if let cached = fragmentViewMap.object(forKey: textLayoutFragment) {
             fragmentView = cached
@@ -535,6 +554,7 @@ extension SyntaxEditorTextInputView {
         }
         lastUsedFragmentViews.removeAll()
         updateInsertionIndicator()
+        comparisonLayout?.layoutDidComplete()
     }
 }
 

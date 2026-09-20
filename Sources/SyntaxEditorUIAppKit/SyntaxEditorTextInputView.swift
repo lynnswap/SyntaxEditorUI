@@ -22,6 +22,7 @@ final class SyntaxEditorTextInputView: NSView, @preconcurrency NSTextInputClient
     var didChangeSelection: (() -> Void)?
     var didChangeMarkedTextRange: (() -> Void)?
     var shouldChangeText: (([NSRange], [String]) -> Bool)?
+    var comparisonLayout: SyntaxEditorComparisonTextLayout?
 
     var typingAttributes: [NSAttributedString.Key: Any] = [:]
     var isEditable = true

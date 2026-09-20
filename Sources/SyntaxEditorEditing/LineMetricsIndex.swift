@@ -4,7 +4,7 @@ import SyntaxEditorLanguageSupport
 import SyntaxEditorLanguages
 
 package final class LineMetricsIndex {
-    private let lineOffsets = LineOffsetTable()
+    package let lineOffsets = LineOffsetTable()
     private var lineColumns: [Int] = [0]
     private var columnCounts: [Int: Int] = [:]
     private var maxColumnHeap: [Int] = []
