@@ -663,6 +663,53 @@ extension SyntaxEditorUITests {
         #expect(context.model.text == source)
     }
 
+    @Test("An earlier deletion resizing preserves the visible line inside a later deletion")
+    @MainActor
+    func macComparisonPreservesLaterDeletedAnchorAcrossGeometryChanges() async throws {
+        for setting in ["width", "font", "wrapping"] {
+            let first = String(repeating: "wide deleted text ", count: 100) + "\n"
+            let second = (0..<300).map { "later deleted line \($0)\n" }.joined()
+            let context = SyntaxEditorTestContext(text: "start\nmiddle\nend\n", language: .plainText, lineWrappingEnabled: true)
+            let (view, window) = try await makeMacComparison(original: "start\n" + first + "middle\n" + second + "end\n", context: context, width: 900)
+            defer { window.orderOut(nil) }
+            #expect(view.model.changeCount == 2)
+            let editor = view.modifiedEditor
+            view.modifiedLayout.revealChange(at: 1)
+            layoutMacComparison(view)
+            let deleted = try #require(view.modifiedLayout.deletedViews[1])
+            let frame = deleted.convert(deleted.bounds, to: editor.textView)
+            editor.contentView.scroll(to: CGPoint(x: 0, y: frame.minY + 1200))
+            editor.reflectScrolledClipView(editor.contentView)
+            layoutMacComparison(view)
+            func visibleLine() throws -> Int {
+                let current = try #require(view.modifiedLayout.deletedViews[1])
+                var point = current.convert(editor.contentView.bounds.origin, from: editor.contentView)
+                point.x = current.textContainerOrigin.x + 1
+                let offset = current.characterIndexForInsertion(at: point)
+                return (current.string as NSString).lineRange(for: NSRange(location: offset, length: 0)).location
+            }
+            let before = try visibleLine()
+            try #require(before > 0)
+            if setting == "width" {
+                window.setContentSize(NSSize(width: 400, height: 420))
+            } else {
+                let delivery = try #require(editor.modelConfigurationDeliveryForTesting)
+                if setting == "font" {
+                    let font = await delivery.values { editor.textView.font?.pointSize }
+                    context.model.fontSizeDelta = 4
+                    #expect(await font.waitUntilValue(editor.resolvedBaseFont(fontSizeDelta: 4).pointSize))
+                } else {
+                    let wraps = await delivery.values { editor.textView.isHorizontallyResizable }
+                    context.model.lineWrappingEnabled = false
+                    #expect(await wraps.waitUntilValue(true))
+                }
+                await view.waitForPendingComparisonRefreshForTesting()
+            }
+            layoutMacComparison(view)
+            #expect(try visibleLine() == before, "setting: \(setting)")
+        }
+    }
+
     @Test("Completed comparisons resynchronize visible panes after edits above the viewport")
     @MainActor
     func macComparisonResynchronizesAfterComparisonRefresh() async throws {

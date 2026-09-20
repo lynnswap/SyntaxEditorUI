@@ -93,8 +93,9 @@ final class SyntaxEditorComparisonTextLayout {
         }
     }
 
-    func refreshTextSettings() {
-        guard let editor else { return }
+    @discardableResult
+    func refreshTextSettings() -> Bool {
+        guard let editor else { return false }
         let wraps = !editor.textView.isHorizontallyResizable
         let containerWidth = wraps ? editor.textContainer.size.width : editor.contentSize.width
         let width = max(1, containerWidth - editor.textContainer.lineFragmentPadding * 2)
@@ -132,11 +133,12 @@ final class SyntaxEditorComparisonTextLayout {
         if geometryChanged {
             rebuildMargins()
             editor.textView.invalidateTextLayout()
-            restoreScrollAnchor(anchor)
+            if !isLayingOut { restoreScrollAnchor(anchor) }
         } else if stylesChanged {
             editor.textView.needsLayout = true
         }
         ruler?.needsDisplay = true
+        return geometryChanged
     }
 
     func configureMargins(for fragment: SyntaxEditorTextInputView.TextLayoutFragment) {
@@ -181,7 +183,7 @@ final class SyntaxEditorComparisonTextLayout {
         isLayingOut = true
         defer { isLayingOut = false }
         let anchor = anchorBeforeGeometryChange()
-        refreshTextSettings()
+        let geometryChanged = refreshTextSettings()
         let viewport = editor.textView.convert(editor.contentView.bounds, from: editor.contentView).insetBy(dx: 0, dy: -100)
         var visible: Set<Int> = []
         var changedSize = false
@@ -222,6 +224,8 @@ final class SyntaxEditorComparisonTextLayout {
         if changedSize {
             minimumTextWidth = settingsWrapping ? 0 : (blocks.values.map(\.size.width).max() ?? 0) + editor.textContainer.lineFragmentPadding * 2
             rebuildMargins()
+        }
+        if changedSize || geometryChanged {
             editor.textView.invalidateTextLayout()
             restoreScrollAnchor(anchor)
             editor.textView.needsLayout = true
@@ -489,10 +493,30 @@ final class SyntaxEditorComparisonTextLayout {
             }
         case let .deleted(index, offset, delta):
             if let block = blocks[index], let view = block.view,
-               let frame = block.frame, let local = view.reveal(NSRange(location: offset, length: 0)) {
-                scroll(to: frame.minY + 4 + local.minY + delta)
+               let y = currentOrigin(of: block), let local = view.reveal(NSRange(location: offset, length: 0)) {
+                block.frame?.origin.y = y
+                view.frame.origin.y = y + 4
+                scroll(to: y + 4 + local.minY + delta)
             }
         }
+    }
+
+    private func currentOrigin(of block: DeletedBlock) -> CGFloat? {
+        guard let editor else { return nil }
+        if editor.textStorage.length == 0 {
+            return frame(forUTF16Range: NSRange(location: 0, length: 0))?.maxY
+        }
+        let offset = block.isFooter ? editor.textStorage.length - 1 : block.anchor
+        guard let range = editor.textSystem.textRange(forUTF16Range: NSRange(location: offset, length: 1)) else { return nil }
+        // A preceding block can move this fragment before its cached view frame
+        // is placed again. Resolve the anchor from TextKit's current geometry.
+        editor.layoutManager.ensureLayout(for: range)
+        guard let fragment = editor.layoutManager.textLayoutFragment(for: range.location) else { return nil }
+        let siblings = block.isFooter ? footerBlocks : topBlocks[block.anchor, default: []]
+        let start = block.isFooter
+            ? fragment.layoutFragmentFrame.maxY - siblings.reduce(0) { $0 + $1.height }
+            : fragment.layoutFragmentFrame.minY
+        return start + siblings.filter { $0.index < block.index }.reduce(0) { $0 + $1.height }
     }
 
     private func scroll(to y: CGFloat) {
