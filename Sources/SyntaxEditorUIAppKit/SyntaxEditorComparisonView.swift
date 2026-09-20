@@ -235,6 +235,10 @@ public final class SyntaxEditorComparisonView: NSView {
             setReferenceVisible(showsReference)
         }
         if contentChanged {
+            if let active = unsafe window?.firstResponder as? SyntaxEditorComparisonDeletedTextView,
+               active.isDescendant(of: modifiedEditor) {
+                unsafe window?.makeFirstResponder(showsReference ? originalEditor.textView : modifiedEditor.textView)
+            }
             modifiedLayout.update(
                 changes: changes ?? [],
                 presentation: identity.presentation,

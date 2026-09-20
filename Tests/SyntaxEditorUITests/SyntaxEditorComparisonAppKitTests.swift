@@ -144,6 +144,40 @@ extension SyntaxEditorUITests {
         #expect(context.model.text == source)
     }
 
+    @Test("Removing an active deleted block transfers focus to a visible editor")
+    @MainActor
+    func macComparisonTransfersDeletedFocusBeforeRemoval() async throws {
+        for presentation: SyntaxEditorComparisonModel.Presentation in [.changeMarkers, .sideBySide, .inline] {
+            let source = "before\nafter\n"
+            let context = SyntaxEditorTestContext(text: source, language: .plainText)
+            let (view, window) = try await makeMacComparison(original: "before\nremoved\nafter\n", context: context)
+            defer { window.orderOut(nil) }
+            let deleted = try #require(view.modifiedLayout.deletedViews[0])
+            #expect(window.makeFirstResponder(deleted))
+            deleted.setSelectedRange(NSRange(location: 1, length: 3))
+            let currentSelection = view.modifiedEditor.selectedRange
+            if presentation == .inline {
+                let revision = view.model.original.textRevision + 1
+                let delivery = try #require(view.comparisonDeliveryForTesting)
+                let ready = await delivery.values {
+                    view.model.original.textRevision == revision && view.model.changeCount != nil
+                }
+                view.model.originalText = "before\nchanged reference\nafter\n"
+                #expect(await ready.waitUntilValue(true))
+                await view.waitForPendingComparisonRefreshForTesting()
+                layoutMacComparison(view)
+            } else {
+                try await changeMacComparison(view, to: presentation)
+            }
+            let expected = presentation == .sideBySide
+                ? view.originalEditor.textView : view.modifiedEditor.textView
+            #expect(window.firstResponder === expected)
+            #expect(deleted.window == nil)
+            #expect(view.modifiedEditor.selectedRange == currentSelection)
+            #expect(context.model.text == source)
+        }
+    }
+
     @Test("Inline deletions retain a caret frame and fit the document at empty and EOF anchors")
     @MainActor
     func macComparisonEmptyAndEOFGeometry() async throws {
@@ -277,29 +311,39 @@ extension SyntaxEditorUITests {
     @Test("The comparison ruler does not paint over the document")
     @MainActor
     func macComparisonDrawsTextBesideRuler() async throws {
-        let foreground = syntaxEditorUITestColor(hex: 0x0000FF)
-        let theme = syntaxEditorUITestTheme(baseForeground: foreground, comment: foreground)
+        let theme = syntaxEditorUITestTheme(background: syntaxEditorUITestColor(hex: 0xFFFFFF))
         let context = SyntaxEditorTestContext(text: "Visible document", language: .plainText, theme: theme)
         let (view, window) = try await makeMacComparison(original: "Reference document", context: context)
         defer { window.orderOut(nil) }
         try await changeMacComparison(view, to: .changeMarkers)
-        window.displayIfNeeded()
-        let bitmap = try #require(view.bitmapImageRepForCachingDisplay(in: view.bounds))
-        view.cacheDisplay(in: view.bounds, to: bitmap)
-        let scale = CGFloat(bitmap.pixelsWide) / view.bounds.width
-        let rulerWidth = try #require(view.modifiedEditor.verticalRulerView).ruleThickness
-        var hasBlueText = false
-        for y in 0..<min(bitmap.pixelsHigh, Int(40 * scale)) {
-            for x in Int((rulerWidth + 5) * scale)..<min(bitmap.pixelsWide, Int(250 * scale)) {
-                guard let color = bitmap.colorAt(x: x, y: y)?.usingColorSpace(.deviceRGB) else { continue }
-                if color.blueComponent > 0.7 && color.redComponent < 0.3 && color.greenComponent < 0.3 {
-                    hasBlueText = true
-                    break
-                }
-            }
-            if hasBlueText { break }
-        }
-        #expect(hasBlueText)
+
+        let ruler = try #require(view.modifiedEditor.verticalRulerView)
+        let canvas = NSRect(x: 0, y: 0, width: view.modifiedEditor.bounds.width, height: ruler.bounds.height)
+        let bitmap = try #require(unsafe NSBitmapImageRep(
+            bitmapDataPlanes: nil,
+            pixelsWide: Int(ceil(canvas.width)),
+            pixelsHigh: Int(ceil(canvas.height)),
+            bitsPerSample: 8,
+            samplesPerPixel: 4,
+            hasAlpha: true,
+            isPlanar: false,
+            colorSpaceName: .deviceRGB,
+            bytesPerRow: 0,
+            bitsPerPixel: 0
+        ))
+        let graphics = try #require(NSGraphicsContext(bitmapImageRep: bitmap))
+        graphics.cgContext.setFillColor(red: 0, green: 0, blue: 1, alpha: 1)
+        graphics.cgContext.fill(canvas)
+
+        // Draw into a CPU bitmap wider than the ruler. This exercises AppKit's
+        // clipping and the real ruler drawing without waiting for glyph layers.
+        ruler.displayIgnoringOpacity(canvas, in: graphics)
+
+        let inside = try #require(bitmap.colorAt(x: Int(ruler.bounds.midX), y: bitmap.pixelsHigh / 2)?.usingColorSpace(.deviceRGB))
+        let outside = try #require(bitmap.colorAt(x: Int(ruler.bounds.maxX) + 10, y: bitmap.pixelsHigh / 2)?.usingColorSpace(.deviceRGB))
+        #expect(inside.redComponent > 0.99 && inside.greenComponent > 0.99 && inside.blueComponent > 0.99)
+        #expect(outside.redComponent < 0.01 && outside.greenComponent < 0.01 && outside.blueComponent > 0.99)
+
         try await changeMacComparison(view, to: .sideBySide)
         let reference = view.originalEditor
         let clip = reference.contentView
