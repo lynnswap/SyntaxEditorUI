@@ -25,7 +25,9 @@ public final class SyntaxEditorModel {
     /// same time.
     public var text: String {
         get {
-            textStorage
+            // Revisions also distinguish canonically equivalent source strings.
+            _ = textRevision
+            return textStorage
         }
         set {
             replaceText(newValue)
@@ -144,7 +146,7 @@ public final class SyntaxEditorModel {
             utf16Length: text.utf16.count
         )
 
-        guard textStorage != text else {
+        guard !textStorage.utf16.elementsEqual(text.utf16) else {
             selectedRangeStorage = nextSelectedRange
             return nil
         }

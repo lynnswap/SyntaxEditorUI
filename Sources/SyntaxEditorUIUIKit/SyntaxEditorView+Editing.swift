@@ -98,7 +98,7 @@ extension SyntaxEditorView {
 
     func replaceDocumentText(_ nextText: String) {
         let previousText = text
-        guard previousText != nextText else {
+        guard !previousText.utf16.elementsEqual(nextText.utf16) else {
             updateTypingAttributes()
             return
         }

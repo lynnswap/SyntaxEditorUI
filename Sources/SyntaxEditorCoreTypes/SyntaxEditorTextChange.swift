@@ -49,7 +49,7 @@ public struct SyntaxEditorTextChange: Equatable, Sendable {
         }
 
         package static func singleReplacement(from oldText: String, to newText: String) -> Replacement? {
-            guard oldText != newText else { return nil }
+            guard !oldText.utf16.elementsEqual(newText.utf16) else { return nil }
 
             let oldUTF16 = Array(oldText.utf16)
             let newUTF16 = Array(newText.utf16)
