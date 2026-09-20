@@ -294,7 +294,10 @@ extension SyntaxEditorTextInputView {
         _ textViewportLayoutController: NSTextViewportLayoutController,
         configureRenderingSurfaceFor textLayoutFragment: NSTextLayoutFragment
     ) {
-        let layoutFragmentFrame = textLayoutFragment.layoutFragmentFrame
+        var layoutFragmentFrame = textLayoutFragment.layoutFragmentFrame
+        if comparisonLayout != nil {
+            layoutFragmentFrame.size.width = max(layoutFragmentFrame.width, bounds.width - layoutFragmentFrame.minX)
+        }
         let fragmentView: SyntaxEditorTextInputView.TextLayoutFragmentView
         if let cached = fragmentViewMap.object(forKey: textLayoutFragment) {
             fragmentView = cached
@@ -534,6 +537,7 @@ extension SyntaxEditorTextInputView {
             staleView.removeFromSuperview()
         }
         lastUsedFragmentViews.removeAll()
+        comparisonLayout?.layoutDidComplete()
         updateInsertionIndicator()
     }
 }

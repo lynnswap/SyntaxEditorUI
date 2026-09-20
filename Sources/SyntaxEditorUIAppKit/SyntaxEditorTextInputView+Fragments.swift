@@ -108,6 +108,7 @@ final class TextLayoutFragmentView: NSView {
     }
 
     override func draw(_ dirtyRect: NSRect) {
+        textInputView?.comparisonLayout?.drawBackground(for: layoutFragment, surfaceOrigin: frame.origin, in: bounds, dirtyRect: dirtyRect)
         drawFindCandidateHighlights(in: dirtyRect)
         if let selectionHighlightColor, !selectionHighlightRects.isEmpty {
             selectionHighlightColor.setFill()

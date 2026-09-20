@@ -8,6 +8,7 @@ package final class DocumentLineMetrics {
 
     package var fullRebuildCount: Int { index.fullRebuildCount }
     package var lineCount: Int { index.lineCount }
+    package var lineOffsets: LineOffsetTable { index.lineOffsets }
 
     package init(source: String = "", tabWidth: Int) {
         index = LineMetricsIndex(source: source, tabWidth: tabWidth)
