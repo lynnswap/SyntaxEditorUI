@@ -265,6 +265,26 @@ extension SyntaxEditorUITests {
         #expect(context.model.text == lines.joined())
     }
 
+    @Test("UIKit comparison layout does not suppress explicit horizontal scroll requests")
+    @MainActor
+    func iosComparisonAllowsExplicitHorizontalScrolling() async throws {
+        let source = (0..<120).map { "line \($0) " + String(repeating: "long content ", count: 20) + "\n" }.joined()
+        let context = SyntaxEditorTestContext(text: source, language: .plainText, lineWrappingEnabled: false)
+        let (view, window) = try await makeIOSIntegrationComparison(original: source, context: context)
+        defer { closeIOSIntegrationComparison(window) }
+        let editor = view.modifiedEditor
+        for presentation: SyntaxEditorComparisonModel.Presentation in [.changeMarkers, .inline, .sideBySide] {
+            try await changeIOSIntegrationComparison(view, to: presentation)
+            editor.setContentOffset(CGPoint(x: 0, y: 600), animated: false)
+            layoutIOSIntegrationComparison(view)
+            editor.setContentOffset(CGPoint(x: 240, y: editor.contentOffset.y), animated: false)
+            #expect(abs(editor.contentOffset.x - 240) <= 1, "presentation: \(presentation)")
+            layoutIOSIntegrationComparison(view)
+            editor.contentOffset = CGPoint(x: 320, y: editor.contentOffset.y)
+            #expect(abs(editor.contentOffset.x - 320) <= 1, "presentation: \(presentation)")
+        }
+    }
+
     @MainActor
     private func makeIOSIntegrationComparison(original: String, context: SyntaxEditorTestContext) async throws -> (SyntaxEditorComparisonView, UIWindow) {
         let model = SyntaxEditorComparisonModel(originalText: original, modified: context.model)

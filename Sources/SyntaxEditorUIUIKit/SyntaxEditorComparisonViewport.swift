@@ -333,7 +333,7 @@ final class SyntaxEditorComparisonViewport {
 
     func frame(_ range: NSRange, in editor: SyntaxEditorView) -> CGRect? {
         let range = SyntaxEditorRangeUtilities.clampedRange(range, utf16Length: editor.storage.length)
-        if range.length == 0 { return editor.caretRect(for: SyntaxEditorView.TextPosition(offset: range.location)) }
+        if range.length == 0 { return editor.caretRect(forUTF16Location: range.location) }
         let origin = CGPoint(x: -editor.textContentView.frame.minX, y: -editor.textContentView.frame.minY)
         let rects = TextLayoutGeometry.standardRects(
             layoutManager: editor.layoutManager, rangeConverter: editor.textSystem.rangeConverter,
@@ -359,7 +359,7 @@ final class SyntaxEditorComparisonViewport {
     }
 
     private func characterOffset(at y: CGFloat, in editor: SyntaxEditorView) -> Int? {
-        guard let position = editor.closestPosition(to: CGPoint(x: editor.textContentView.frame.minX + editor.container.lineFragmentPadding + 1, y: y)) else { return nil }
+        guard let position = editor.closestTextPosition(to: CGPoint(x: editor.textContentView.frame.minX + editor.container.lineFragmentPadding + 1, y: y), constrainedTo: nil) else { return nil }
         return editor.offset(from: editor.beginningOfDocument, to: position)
     }
 

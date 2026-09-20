@@ -156,7 +156,7 @@ final class SyntaxEditorComparisonTextLayout {
             let point = touch.location(in: editor)
             if let index = editor.inlineComparisonLayout?.changeIndex(atY: point.y) {
                 _ = layout.comparison?.model.selectChange(at: index)
-            } else if let position = editor.closestPosition(to: CGPoint(x: editor.textContentView.frame.minX + editor.container.lineFragmentPadding + 1, y: point.y)),
+            } else if let position = editor.closestTextPosition(to: CGPoint(x: editor.textContentView.frame.minX + editor.container.lineFragmentPadding + 1, y: point.y), constrainedTo: nil),
                       let index = layout.changeIndex(at: editor.offset(from: editor.beginningOfDocument, to: position)) {
                 _ = layout.comparison?.model.selectChange(at: index)
             }
