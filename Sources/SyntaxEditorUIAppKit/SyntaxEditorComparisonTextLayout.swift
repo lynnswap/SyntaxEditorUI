@@ -287,7 +287,8 @@ final class SyntaxEditorComparisonTextLayout {
         let start = editor.textSystem.utf16Range(for: fragment).location
         for line in fragment.textLineFragments {
             let range = NSRange(location: start + line.characterRange.location, length: line.characterRange.length)
-            guard let index = changeIndex(at: range.location) else { continue }
+            // A zero-length change marks a boundary, not text in this row.
+            guard let index = changeIndex(at: range.location), sourceRange(changes[index]).length > 0 else { continue }
             if presentation != .changeMarkers || index == selectedChangeIndex {
                 let color = index == selectedChangeIndex ? NSColor.selectedControlColor : changeColor(at: index)
                 color.withAlphaComponent(index == selectedChangeIndex ? 0.16 : 0.09).setFill()

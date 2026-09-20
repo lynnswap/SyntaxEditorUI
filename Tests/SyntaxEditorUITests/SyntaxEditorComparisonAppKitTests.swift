@@ -364,6 +364,91 @@ extension SyntaxEditorUITests {
         #expect(abs(originalY - currentOriginalSpan.midY) <= 2)
     }
 
+    @Test("EOF-only deletions have a visible marker")
+    @MainActor
+    func macComparisonEOFDeletionHasMarker() async throws {
+        for (original, source) in [("a\nb\n", "a\n"), ("a\r\nb\r\n", "a\r\n"), ("removed\n", "")] {
+            let theme = syntaxEditorUITestTheme(background: syntaxEditorUITestColor(hex: 0xFFFFFF))
+            let context = SyntaxEditorTestContext(text: source, language: .plainText, theme: theme)
+            let (view, window) = try await makeMacComparison(original: original, context: context)
+            defer { window.orderOut(nil) }
+            try await changeMacComparison(view, to: .changeMarkers)
+            let ruler = try #require(view.modifiedEditor.verticalRulerView)
+            let (bitmap, graphics) = try comparisonBitmap(size: ruler.bounds.size)
+            ruler.displayIgnoringOpacity(ruler.bounds, in: graphics)
+            let markerX = Int(ruler.ruleThickness) - 4
+            let hasRedMarker = (0..<bitmap.pixelsHigh).contains { y in
+                guard let color = bitmap.colorAt(x: markerX, y: y)?.usingColorSpace(.deviceRGB) else { return false }
+                return color.redComponent > color.greenComponent + 0.15
+                    && color.redComponent > color.blueComponent + 0.15
+            }
+            #expect(hasRedMarker)
+        }
+    }
+
+    @Test("Deletion boundaries do not color the following common text")
+    @MainActor
+    func macComparisonDeletionDoesNotColorCommonRow() async throws {
+        let context = SyntaxEditorTestContext(text: "before\nafter\n", language: .plainText)
+        let (view, window) = try await makeMacComparison(original: "before\nremoved\nafter\n", context: context)
+        defer { window.orderOut(nil) }
+        for presentation: SyntaxEditorComparisonModel.Presentation in [.inline, .sideBySide] {
+            try await changeMacComparison(view, to: presentation)
+            let editor = view.modifiedEditor
+            let surface = try #require(editor.textView.textContentView.subviews.compactMap {
+                $0 as? SyntaxEditorTextInputView.TextLayoutFragmentView
+            }.first { editor.textSystem.utf16Range(for: $0.layoutFragment).location == "before\n".utf16.count })
+            let (bitmap, graphics) = try comparisonBitmap(size: surface.bounds.size)
+            graphics.cgContext.setFillColor(red: 0, green: 0, blue: 1, alpha: 1)
+            graphics.cgContext.fill(surface.bounds)
+            NSGraphicsContext.saveGraphicsState()
+            NSGraphicsContext.current = graphics
+            view.modifiedLayout.drawBackground(
+                for: surface.layoutFragment, surfaceOrigin: surface.frame.origin,
+                in: surface.bounds, dirtyRect: surface.bounds
+            )
+            NSGraphicsContext.restoreGraphicsState()
+            let addedRed = (0..<bitmap.pixelsHigh).contains { y in
+                let color = bitmap.colorAt(x: bitmap.pixelsWide / 2, y: y)?.usingColorSpace(.deviceRGB)
+                return (color?.redComponent ?? 0) > 0.01
+            }
+            #expect(!addedRed)
+        }
+    }
+
+    @Test("Resizing wrapped comparisons keeps the visible common lines synchronized")
+    @MainActor
+    func macComparisonResynchronizesAfterWrappedResize() async throws {
+        let prefix = (0..<10).map { "prefix \($0)\n" }.joined()
+        let suffix = (0..<100).map { "common \($0)\n" }.joined()
+        let context = SyntaxEditorTestContext(text: prefix + "new\n" + suffix, language: .plainText, lineWrappingEnabled: true)
+        let original = prefix + String(repeating: "long reference text ", count: 25) + "\n" + suffix
+        let (view, window) = try await makeMacComparison(original: original, context: context, width: 900)
+        defer { window.orderOut(nil) }
+        try await changeMacComparison(view, to: .sideBySide)
+        let line = try #require(view.modifiedLayout.lineFrame(50))
+        view.modifiedEditor.contentView.scroll(to: NSPoint(x: 0, y: line.minY))
+        view.modifiedEditor.reflectScrolledClipView(view.modifiedEditor.contentView)
+
+        window.setContentSize(NSSize(width: 440, height: 420))
+        layoutMacComparison(view)
+        let currentY = view.modifiedEditor.textView.convert(view.modifiedEditor.contentView.bounds.origin, from: view.modifiedEditor.contentView).y
+        let referenceY = view.originalEditor.textView.convert(view.originalEditor.contentView.bounds.origin, from: view.originalEditor.contentView).y
+        let currentLine = try #require(view.modifiedLayout.logicalPosition(atY: currentY))
+        let referenceLine = try #require(view.originalLayout.logicalPosition(atY: referenceY))
+        #expect(abs(currentLine - referenceLine) < 0.2)
+    }
+
+    @MainActor
+    private func comparisonBitmap(size: NSSize) throws -> (NSBitmapImageRep, NSGraphicsContext) {
+        let bitmap = try #require(unsafe NSBitmapImageRep(
+            bitmapDataPlanes: nil, pixelsWide: Int(ceil(size.width)), pixelsHigh: Int(ceil(size.height)),
+            bitsPerSample: 8, samplesPerPixel: 4, hasAlpha: true, isPlanar: false,
+            colorSpaceName: .deviceRGB, bytesPerRow: 0, bitsPerPixel: 0
+        ))
+        return (bitmap, try #require(NSGraphicsContext(bitmapImageRep: bitmap)))
+    }
+
     @Test("The comparison ruler does not paint over the document")
     @MainActor
     func macComparisonDrawsTextBesideRuler() async throws {

@@ -141,6 +141,9 @@ public final class SyntaxEditorComparisonView: NSView {
             clip.scroll(to: clip.constrainBoundsRect(bounds).origin)
             originalEditor.reflectScrolledClipView(clip)
         }
+        if model.presentation == .sideBySide {
+            synchronizeScroll(from: .modified)
+        }
     }
 
     public override func viewDidChangeEffectiveAppearance() {
