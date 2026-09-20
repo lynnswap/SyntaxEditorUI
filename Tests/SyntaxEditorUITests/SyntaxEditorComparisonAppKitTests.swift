@@ -364,6 +364,112 @@ extension SyntaxEditorUITests {
         #expect(abs(originalY - currentOriginalSpan.midY) <= 2)
     }
 
+    @Test("Deleted block layer colors follow their effective appearance without relayout")
+    @MainActor
+    func macComparisonDeletedColorsFollowAppearance() async throws {
+        let context = SyntaxEditorTestContext(
+            text: "before\nafter\n", language: .plainText,
+            theme: syntaxEditorUITestTheme(background: syntaxEditorUITestColor(hex: 0xFFFFFF))
+        )
+        let (view, window) = try await makeMacComparison(original: "before\nremoved\nafter\n", context: context)
+        defer { window.orderOut(nil) }
+        let deleted = try #require(view.modifiedLayout.deletedViews[0])
+        let delivery = try #require(view.comparisonDeliveryForTesting)
+        let selection = await delivery.values { view.model.selectedChangeIndex }
+        #expect(view.model.selectNextChange())
+        #expect(await selection.waitUntilValue(0))
+        await view.waitForPendingComparisonRefreshForTesting()
+        let layer = try #require(deleted.layer)
+        let alpha = try #require(layer.backgroundColor).alpha
+        for name: NSAppearance.Name in [.darkAqua, .aqua] {
+            deleted.appearance = try #require(NSAppearance(named: name))
+            deleted.viewDidChangeEffectiveAppearance()
+            var background: CGColor?
+            var border: CGColor?
+            deleted.effectiveAppearance.performAsCurrentDrawingAppearance {
+                background = NSColor.systemRed.withAlphaComponent(alpha).cgColor
+                border = NSColor.selectedControlColor.cgColor
+            }
+            #expect(layer.backgroundColor == background)
+            #expect(layer.borderColor == border)
+            #expect(layer.borderWidth == 1)
+        }
+    }
+
+    @Test("Selecting a visible tall change from its ruler retains the viewport")
+    @MainActor
+    func macComparisonRulerSelectionKeepsVisibleHunk() async throws {
+        let large = (0..<300).map { "changed line \($0)\n" }.joined()
+        for isDeletion in [true, false] {
+            let source = isDeletion ? "before\nafter\n" : large
+            let original = isDeletion ? "before\n" + large + "after\n" : ""
+            let context = SyntaxEditorTestContext(text: source, language: .plainText)
+            let (view, window) = try await makeMacComparison(original: original, context: context)
+            defer { window.orderOut(nil) }
+            let editor = view.modifiedEditor
+            let target: CGRect
+            if isDeletion {
+                let deleted = try #require(view.modifiedLayout.deletedViews[0])
+                target = deleted.convert(deleted.bounds, to: editor.textView)
+            } else {
+                target = try #require(view.modifiedLayout.frame(forUTF16Range: NSRange(location: 0, length: source.utf16.count)))
+            }
+            editor.contentView.scroll(to: NSPoint(x: editor.contentView.bounds.minX, y: target.midY))
+            editor.reflectScrolledClipView(editor.contentView)
+            layoutMacComparison(view)
+            let before = editor.contentView.bounds.origin
+            let ruler = try #require(editor.verticalRulerView)
+            let location = ruler.convert(NSPoint(x: ruler.ruleThickness - 4, y: ruler.bounds.midY), to: nil)
+            let event = try #require(NSEvent.mouseEvent(
+                with: .leftMouseDown, location: location, modifierFlags: [], timestamp: 0,
+                windowNumber: window.windowNumber, context: nil, eventNumber: 1, clickCount: 1, pressure: 1
+            ))
+            let delivery = try #require(view.comparisonDeliveryForTesting)
+            let selected = await delivery.values { view.model.selectedChangeIndex }
+            ruler.mouseDown(with: event)
+            #expect(await selected.waitUntilValue(0))
+            await view.waitForPendingComparisonRefreshForTesting()
+            #expect(editor.contentView.bounds.origin == before)
+            #expect(context.model.text == source)
+        }
+    }
+
+    @Test("An inline comparison retains its constrained bottom including trailing insets")
+    @MainActor
+    func macComparisonPreservesBottomContentInset() async throws {
+        let suffix = (0..<30).map { "common \($0)\n" }.joined()
+        let context = SyntaxEditorTestContext(text: "start\n" + suffix, language: .plainText, lineWrappingEnabled: true)
+        let original = "start\n" + String(repeating: "removed text ", count: 300) + "\n" + suffix
+        let (view, window) = try await makeMacComparison(original: original, context: context)
+        defer { window.orderOut(nil) }
+        let editor = view.modifiedEditor
+        editor.contentInsets.bottom = 70
+        layoutMacComparison(view)
+        func bottomBounds() -> CGRect {
+            var bounds = editor.contentView.bounds
+            bounds.origin.y = editor.textView.bounds.maxY + editor.contentView.contentInsets.bottom
+            return editor.contentView.constrainBoundsRect(bounds)
+        }
+        editor.contentView.scroll(to: bottomBounds().origin)
+        editor.reflectScrolledClipView(editor.contentView)
+        layoutMacComparison(view)
+        #expect(abs(editor.contentView.bounds.minY - bottomBounds().minY) < 1)
+        let editorDelivery = try #require(editor.modelConfigurationDeliveryForTesting)
+        let referenceDelivery = try #require(view.originalEditor.modelConfigurationDeliveryForTesting)
+        let comparisonDelivery = try #require(view.comparisonConfigurationDeliveryForTesting)
+        let expected = editor.resolvedBaseFont(fontSizeDelta: 4).pointSize
+        let currentFont = await editorDelivery.values { editor.textView.font?.pointSize }
+        let referenceFont = await referenceDelivery.values { view.originalEditor.textView.font?.pointSize }
+        let configuration = await comparisonDelivery.values { context.model.fontSizeDelta }
+        context.model.fontSizeDelta = 4
+        #expect(await currentFont.waitUntilValue(expected))
+        #expect(await referenceFont.waitUntilValue(expected))
+        #expect(await configuration.waitUntilValue(4))
+        await view.waitForPendingComparisonRefreshForTesting()
+        layoutMacComparison(view)
+        #expect(abs(editor.contentView.bounds.minY - bottomBounds().minY) < 1)
+    }
+
     @Test("Resizing preserves a reference viewport inside a deleted span")
     @MainActor
     func macComparisonPreservesReferenceViewportOnResize() async throws {

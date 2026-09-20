@@ -22,6 +22,8 @@ final class SyntaxEditorComparisonDeletedTextView: NSTextView {
         isEditable = false
         isSelectable = true
         drawsBackground = false
+        wantsLayer = true
+        updateComparisonColors()
         textContainerInset = .zero
         isVerticallyResizable = false
         isHorizontallyResizable = false
@@ -117,6 +119,18 @@ final class SyntaxEditorComparisonDeletedTextView: NSTextView {
         guard let fragment = comparisonLayoutManager.textLayoutFragment(for: location),
               let line = fragment.textLineFragment(for: location, isUpstreamAffinity: false) else { return nil }
         return NSRect(x: 0, y: y, width: bounds.width, height: line.typographicBounds.height)
+    }
+
+    override func viewDidChangeEffectiveAppearance() {
+        super.viewDidChangeEffectiveAppearance()
+        updateComparisonColors()
+    }
+
+    private func updateComparisonColors() {
+        effectiveAppearance.performAsCurrentDrawingAppearance {
+            layer?.backgroundColor = NSColor.systemRed.withAlphaComponent(0.12).cgColor
+            layer?.borderColor = NSColor.selectedControlColor.cgColor
+        }
     }
 
     override func performFindPanelAction(_ sender: Any?) {

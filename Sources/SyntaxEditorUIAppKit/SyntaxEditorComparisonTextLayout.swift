@@ -83,7 +83,6 @@ final class SyntaxEditorComparisonTextLayout {
         editor?.textView.setNeedsDisplayForVisibleTextFragments()
         for (blockIndex, block) in blocks {
             block.view?.layer?.borderWidth = blockIndex == index ? 1 : 0
-            block.view?.layer?.borderColor = NSColor.selectedControlColor.cgColor
         }
     }
 
@@ -242,8 +241,6 @@ final class SyntaxEditorComparisonTextLayout {
             view = existing
         } else {
             view = SyntaxEditorComparisonDeletedTextView()
-            view.wantsLayer = true
-            view.layer?.backgroundColor = NSColor.systemRed.withAlphaComponent(0.12).cgColor
             view.setAccessibilityLabel("Deleted reference text, line \(block.firstLine + 1)")
             view.install(attributedDeletedText(for: block, comparison: comparison))
             let originalOffset = block.range.location
@@ -268,11 +265,7 @@ final class SyntaxEditorComparisonTextLayout {
         block.size = measured
         block.frame = CGRect(x: frame.minX, y: frame.minY, width: frame.width, height: block.height)
         view.frame.origin = CGPoint(x: editor.textContainer.lineFragmentPadding, y: y + 4)
-        view.effectiveAppearance.performAsCurrentDrawingAppearance {
-            view.layer?.backgroundColor = NSColor.systemRed.withAlphaComponent(0.12).cgColor
-        }
         view.layer?.borderWidth = block.index == selectedChangeIndex ? 1 : 0
-        view.layer?.borderColor = NSColor.selectedControlColor.cgColor
         return changed
     }
 
@@ -359,6 +352,11 @@ final class SyntaxEditorComparisonTextLayout {
     func revealChange(at index: Int) {
         guard let editor, changes.indices.contains(index) else { return }
         let range = sourceRange(changes[index])
+        let viewport = editor.textView.convert(editor.contentView.bounds, from: editor.contentView)
+        if let displayed = blocks[index]?.frame ?? frame(forUTF16Range: range),
+           !viewport.isEmpty, displayed.minY < viewport.maxY, displayed.maxY > viewport.minY {
+            return
+        }
         let offset = min(range.location, max(0, editor.textStorage.length - 1))
         if let location = editor.textSystem.textLocation(forUTF16Offset: offset) {
             let y = editor.layoutManager.textViewportLayoutController.relocateViewport(to: location)
@@ -447,7 +445,10 @@ final class SyntaxEditorComparisonTextLayout {
         guard let editor, editor.contentView.bounds.width > 0, editor.contentView.bounds.height > 0 else { return nil }
         let visible = editor.textView.visibleViewportBounds
         if visible.minY <= 0 { return .top }
-        if abs(visible.maxY - editor.textView.bounds.maxY) < 1 { return .bottom }
+        var endpoint = editor.contentView.bounds
+        endpoint.origin.y = editor.textView.bounds.maxY + editor.contentView.contentInsets.bottom
+        let bottomY = editor.contentView.constrainBoundsRect(endpoint).minY
+        if abs(editor.contentView.bounds.minY - bottomY) < 1 { return .bottom }
         for block in blocks.values {
             guard let frame = block.frame, let view = block.view,
                   visible.minY >= frame.minY, visible.minY < frame.maxY else { continue }
@@ -468,7 +469,7 @@ final class SyntaxEditorComparisonTextLayout {
         case .top:
             scroll(to: -max(0, editor.contentView.contentInsets.top))
         case .bottom:
-            scroll(to: max(0, editor.textView.bounds.height - editor.contentView.bounds.height))
+            scroll(to: editor.textView.bounds.maxY + editor.contentView.contentInsets.bottom)
         case let .document(offset, delta):
             if let frame = frame(forUTF16Range: NSRange(location: min(offset, editor.textStorage.length), length: 0)) {
                 scroll(to: frame.minY + delta)
