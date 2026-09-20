@@ -232,7 +232,7 @@ final class SyntaxEditorComparisonViewport: NSObject {
             guard let y else { return }
             let before = editor.contentView.bounds.minY
             // Keep the restored line on the visible side of a fractional pixel boundary.
-            let scale = editor.window?.backingScaleFactor ?? 1
+            let scale = unsafe editor.window?.backingScaleFactor ?? 1
             scroll(editor, to: ceil(y * scale) / scale)
             if abs(before - editor.contentView.bounds.minY) < 0.25 { break }
         }
