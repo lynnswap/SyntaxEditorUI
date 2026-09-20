@@ -364,25 +364,30 @@ extension SyntaxEditorUITests {
         #expect(abs(originalY - currentOriginalSpan.midY) <= 2)
     }
 
-    @Test("EOF-only deletions have a visible marker")
+    @Test("EOF changes have correctly colored boundary markers")
     @MainActor
-    func macComparisonEOFDeletionHasMarker() async throws {
-        for (original, source) in [("a\nb\n", "a\n"), ("a\r\nb\r\n", "a\r\n"), ("removed\n", "")] {
+    func macComparisonEOFChangesHaveMarkers() async throws {
+        for (original, source, referenceBoundary) in [
+            ("a\nb\n", "a\n", false), ("a\r\nb\r\n", "a\r\n", false), ("removed\n", "", false),
+            ("a\n", "a\nb\n", true), ("", "added\n", true),
+        ] {
             let theme = syntaxEditorUITestTheme(background: syntaxEditorUITestColor(hex: 0xFFFFFF))
             let context = SyntaxEditorTestContext(text: source, language: .plainText, theme: theme)
             let (view, window) = try await makeMacComparison(original: original, context: context)
             defer { window.orderOut(nil) }
-            try await changeMacComparison(view, to: .changeMarkers)
-            let ruler = try #require(view.modifiedEditor.verticalRulerView)
+            try await changeMacComparison(view, to: referenceBoundary ? .sideBySide : .changeMarkers)
+            let editor = referenceBoundary ? view.originalEditor : view.modifiedEditor
+            let ruler = try #require(editor.verticalRulerView)
             let (bitmap, graphics) = try comparisonBitmap(size: ruler.bounds.size)
             ruler.displayIgnoringOpacity(ruler.bounds, in: graphics)
             let markerX = Int(ruler.ruleThickness) - 4
-            let hasRedMarker = (0..<bitmap.pixelsHigh).contains { y in
+            let hasExpectedMarker = (0..<bitmap.pixelsHigh).contains { y in
                 guard let color = bitmap.colorAt(x: markerX, y: y)?.usingColorSpace(.deviceRGB) else { return false }
-                return color.redComponent > color.greenComponent + 0.15
-                    && color.redComponent > color.blueComponent + 0.15
+                return referenceBoundary
+                    ? color.greenComponent > color.redComponent + 0.15 && color.greenComponent > color.blueComponent + 0.15
+                    : color.redComponent > color.greenComponent + 0.15 && color.redComponent > color.blueComponent + 0.15
             }
-            #expect(hasRedMarker)
+            #expect(hasExpectedMarker)
         }
     }
 

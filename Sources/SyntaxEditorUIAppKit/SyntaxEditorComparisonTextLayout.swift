@@ -541,7 +541,10 @@ final class SyntaxEditorComparisonTextLayout {
         func draw(_ number: Int, at point: CGPoint, change: Int?, deleted: Bool = false) {
             let y = ruler.convert(point, from: editor.textView).y
             guard y + 20 >= dirtyRect.minY, y <= dirtyRect.maxY else { return }
-            let color = deleted && change != nil ? NSColor.systemRed
+            let isDeletion = change.map {
+                (deleted && changes[$0].originalRange.length > 0) || changes[$0].modifiedRange.length == 0
+            } ?? false
+            let color = isDeletion ? NSColor.systemRed
                 : change.map { changeColor(at: $0) } ?? NSColor.secondaryLabelColor
             let attributes: [NSAttributedString.Key: Any] = [.font: font, .foregroundColor: color]
             let value = "\(number)" as NSString
@@ -554,8 +557,6 @@ final class SyntaxEditorComparisonTextLayout {
                     NSColor.selectedControlColor.setFill()
                     CGRect(x: 0, y: y, width: 2, height: 14).fill()
                 }
-                let isDeletion = deleted && changes[change].originalRange.length > 0
-                    || changes[change].modifiedRange.length == 0
                 let isModification = presentation == .changeMarkers
                     && changes[change].originalRange.length > 0 && changes[change].modifiedRange.length > 0
                 let symbol = (isModification ? "~" : isDeletion ? "−" : "+") as NSString
