@@ -127,10 +127,13 @@ final class SyntaxEditorComparisonDeletedTextView: NSTextView {
               let end = contentStorage.location(location, offsetBy: 1),
               let range = NSTextRange(location: location, end: end) else { return nil }
         comparisonLayoutManager.ensureLayout(for: range)
-        let y = comparisonLayoutManager.textViewportLayoutController.relocateViewport(to: location)
+        _ = comparisonLayoutManager.textViewportLayoutController.relocateViewport(to: location)
         guard let fragment = comparisonLayoutManager.textLayoutFragment(for: location),
               let line = fragment.textLineFragment(for: location, isUpstreamAffinity: false) else { return nil }
-        return NSRect(x: 0, y: y, width: bounds.width, height: line.typographicBounds.height)
+        // The relocation estimate can differ from the resolved line position.
+        // Restoring from that estimate can capture the preceding line next time.
+        return NSRect(x: 0, y: fragment.layoutFragmentFrame.minY + line.typographicBounds.minY,
+                      width: bounds.width, height: line.typographicBounds.height)
     }
 
     override func viewDidChangeEffectiveAppearance() {

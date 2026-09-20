@@ -694,14 +694,25 @@ extension SyntaxEditorUITests {
                 window.setContentSize(NSSize(width: 400, height: 420))
             } else {
                 let delivery = try #require(editor.modelConfigurationDeliveryForTesting)
+                let referenceDelivery = try #require(view.originalEditor.modelConfigurationDeliveryForTesting)
+                let comparisonDelivery = try #require(view.comparisonConfigurationDeliveryForTesting)
                 if setting == "font" {
                     let font = await delivery.values { editor.textView.font?.pointSize }
+                    let referenceFont = await referenceDelivery.values { view.originalEditor.textView.font?.pointSize }
+                    let configuration = await comparisonDelivery.values { context.model.fontSizeDelta }
+                    let expected = editor.resolvedBaseFont(fontSizeDelta: 4).pointSize
                     context.model.fontSizeDelta = 4
-                    #expect(await font.waitUntilValue(editor.resolvedBaseFont(fontSizeDelta: 4).pointSize))
+                    #expect(await font.waitUntilValue(expected))
+                    #expect(await referenceFont.waitUntilValue(expected))
+                    #expect(await configuration.waitUntilValue(4))
                 } else {
                     let wraps = await delivery.values { editor.textView.isHorizontallyResizable }
+                    let referenceWraps = await referenceDelivery.values { view.originalEditor.textView.isHorizontallyResizable }
+                    let configuration = await comparisonDelivery.values { context.model.lineWrappingEnabled }
                     context.model.lineWrappingEnabled = false
                     #expect(await wraps.waitUntilValue(true))
+                    #expect(await referenceWraps.waitUntilValue(true))
+                    #expect(await configuration.waitUntilValue(false))
                 }
                 await view.waitForPendingComparisonRefreshForTesting()
             }
