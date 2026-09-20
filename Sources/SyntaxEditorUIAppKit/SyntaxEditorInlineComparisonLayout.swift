@@ -74,6 +74,11 @@ final class SyntaxEditorInlineComparisonLayout {
         for block in blocks { block.view?.layer?.borderWidth = block.index == index ? 1 : 0 }
     }
 
+    func frame(forChangeAt index: Int) -> CGRect? {
+        guard let editor, let view = blocks.first(where: { $0.index == index })?.view else { return nil }
+        return view.convert(view.bounds, to: editor.textView).insetBy(dx: 0, dy: -4)
+    }
+
     func changeIndex(atY y: CGFloat) -> Int? {
         guard let editor else { return nil }
         return blocks.first { block in
