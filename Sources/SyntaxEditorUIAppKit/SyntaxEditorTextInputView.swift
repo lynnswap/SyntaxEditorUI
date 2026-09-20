@@ -7,6 +7,7 @@ import SyntaxEditorUICommon
 final class SyntaxEditorTextInputView: NSView, @preconcurrency NSTextInputClient, @preconcurrency NSTextFinderClient, @preconcurrency NSTextLayoutManagerDelegate, @preconcurrency NSTextViewportLayoutControllerDelegate, NSUserInterfaceValidations {
     let textSystem: EditorTextSystem
     let textContentView = SyntaxEditorTextInputView.TextContentView()
+    weak var comparisonLayout: SyntaxEditorComparisonTextLayout?
     let textFinder = NSTextFinder()
     let insertionIndicator = NSTextInsertionIndicator(frame: .zero)
     private var incrementalMatchRangesObservation: NSKeyValueObservation?
