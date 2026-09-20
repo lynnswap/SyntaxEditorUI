@@ -10,6 +10,26 @@ import UIKit
 @testable import SyntaxEditorUIUIKit
 
 extension SyntaxEditorUITests {
+    @Test("UIKit geometry reads the font actually installed in text storage")
+    @MainActor
+    func iosGeometryUsesAppliedFontDuringModelUpdate() async throws {
+        let context = SyntaxEditorTestContext(text: "plain text", language: .plainText)
+        let editor = SyntaxEditorView(testContext: context)
+        layoutIOSEditorView(editor)
+        let delivery = try #require(editor.modelConfigurationDeliveryForTesting)
+        let appliedFonts = await delivery.values {
+            (editor.storage.attribute(.font, at: 0, effectiveRange: nil) as? UIFont)?.pointSize
+        }
+        let expected = editor.resolvedBaseFont(fontSizeDelta: 4).pointSize
+
+        context.model.fontSizeDelta = 4
+
+        let installed = try #require(editor.storage.attribute(.font, at: 0, effectiveRange: nil) as? UIFont)
+        #expect(editor.font.isEqual(installed))
+        #expect(await appliedFonts.waitUntilValue(expected))
+        #expect(editor.font.pointSize == expected)
+    }
+
     @Test("SyntaxEditorView clips iOS highlight ranges to layout fragments")
     @MainActor
     func syntaxEditorViewIOSClipsHighlightRangesToLayoutFragments() {

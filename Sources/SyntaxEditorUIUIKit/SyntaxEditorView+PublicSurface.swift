@@ -82,8 +82,9 @@ extension SyntaxEditorView {
         findCoordinator?.findInteraction
     }
 
+    /// The base font installed by the latest configuration delivery.
     var font: UIFont {
-        resolvedBaseFont()
+        (typingAttributes[.font] as? UIFont) ?? resolvedBaseFont()
     }
 
     /// Whether user input can modify the document.

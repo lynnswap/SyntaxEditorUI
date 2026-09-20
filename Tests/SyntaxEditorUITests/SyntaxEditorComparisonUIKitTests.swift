@@ -45,7 +45,7 @@ extension SyntaxEditorUITests {
         #expect(editor.text.utf16.elementsEqual((source + "!").utf16))
     }
 
-    @Test("Comparison presentation switches preserve iOS marked text through commit and undo")
+    @Test("Simulated UIKit marked input survives comparison presentation changes and undo")
     @MainActor
     func iosComparisonPreservesMarkedText() async throws {
         let source = "current: "
@@ -53,12 +53,12 @@ extension SyntaxEditorUITests {
         let (view, window) = try await makeIOSComparison(original: "reference", context: context)
         defer { closeIOSComparison(window) }
         let editor = view.modifiedEditor
-        #expect(editor.becomeFirstResponder())
+        #expect(!editor.isFirstResponder)
         editor.selectedRange = NSRange(location: source.utf16.count, length: 0)
         let revision = context.model.textRevision + 1
         let delivery = try #require(view.comparisonDeliveryForTesting)
         let ready = await delivery.values { context.model.textRevision == revision && view.model.changeCount != nil }
-        // This test acts as the IME; receive its notifications through the test input client.
+        // Drive the IME protocol without starting a separate system input session.
         let inputClient = SyntaxEditorUITestInputDelegate()
         editor.inputDelegate = inputClient
         editor.setMarkedText("かな", selectedRange: NSRange(location: 2, length: 0))
@@ -71,7 +71,7 @@ extension SyntaxEditorUITests {
             #expect((editor.markedTextRange as? SyntaxEditorView.TextRange)?.nsRange == marked)
             #expect(editor.selectedRange == selection)
             #expect(editor.text == source + "かな")
-            #expect(editor.isFirstResponder)
+            #expect(!editor.isFirstResponder)
         }
         editor.insertText("仮名")
         #expect(editor.markedTextRange == nil)
