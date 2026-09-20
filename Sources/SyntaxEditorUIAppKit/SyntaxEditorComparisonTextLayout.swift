@@ -86,6 +86,13 @@ final class SyntaxEditorComparisonTextLayout {
         }
     }
 
+    func updateReferenceSelection() {
+        guard let comparison else { return }
+        for block in blocks.values {
+            block.view?.setSelection(comparison.model.original.selectedRange, relativeTo: block.range.location)
+        }
+    }
+
     func refreshTextSettings() {
         guard let editor else { return }
         let wraps = !editor.textView.isHorizontallyResizable
@@ -243,6 +250,7 @@ final class SyntaxEditorComparisonTextLayout {
             view = SyntaxEditorComparisonDeletedTextView()
             view.setAccessibilityLabel("Deleted reference text, line \(block.firstLine + 1)")
             view.install(attributedDeletedText(for: block, comparison: comparison))
+            view.setSelection(comparison.model.original.selectedRange, relativeTo: block.range.location)
             let originalOffset = block.range.location
             view.onSelectionChange = { [weak comparison] localRange in
                 comparison?.model.original.selectedRange = NSRange(

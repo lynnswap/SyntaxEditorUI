@@ -11,7 +11,7 @@ final class SyntaxEditorComparisonDeletedTextView: NSTextView {
     private let comparisonLayoutManager = NSTextLayoutManager()
     private let comparisonContainer = NSTextContainer()
     private var measuredSize: NSSize?
-    private var isInstallingText = false
+    private var isApplyingReference = false
 
     init() {
         contentStorage.textStorage = comparisonStorage
@@ -47,7 +47,7 @@ final class SyntaxEditorComparisonDeletedTextView: NSTextView {
     /// Installs the already styled slice of the original document.
     func install(_ attributedString: NSAttributedString) {
         let previousSelection = selectedRanges
-        isInstallingText = true
+        isApplyingReference = true
         comparisonStorage.setAttributedString(attributedString)
         selectedRanges = previousSelection.map {
             let range = $0.rangeValue
@@ -57,10 +57,22 @@ final class SyntaxEditorComparisonDeletedTextView: NSTextView {
                 length: min(range.length, attributedString.length - location)
             ))
         }
-        isInstallingText = false
+        isApplyingReference = false
         measuredSize = nil
         needsLayout = true
         needsDisplay = true
+    }
+
+    func setSelection(_ range: NSRange, relativeTo originalLocation: Int) {
+        let start = min(max(0, range.location - originalLocation), comparisonStorage.length)
+        let end = min(max(0, range.location + range.length - originalLocation), comparisonStorage.length)
+        let local = NSRange(location: start, length: end - start)
+        guard selectedRange() != local else { return }
+        // A block's projected selection must not replace the complete reference selection.
+        let wasApplying = isApplyingReference
+        isApplyingReference = true
+        defer { isApplyingReference = wasApplying }
+        setSelectedRange(local)
     }
 
     /// Refines the caller's initial estimate using native viewport layout.
@@ -147,7 +159,7 @@ final class SyntaxEditorComparisonDeletedTextView: NSTextView {
     }
 
     @objc private func selectionDidChange(_ notification: Notification) {
-        guard !isInstallingText else { return }
+        guard !isApplyingReference else { return }
         onSelectionChange?(selectedRange())
     }
 }

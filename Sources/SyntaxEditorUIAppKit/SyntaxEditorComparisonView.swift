@@ -199,6 +199,7 @@ public final class SyntaxEditorComparisonView: NSView {
         let model = model
         comparisonObservation = withPortableContinuousObservation { [weak self, model] _ in
             _ = model.original.textRevision
+            _ = model.original.selectedRange
             _ = model.modified.textRevision
             _ = model.changes
             _ = model.presentation
@@ -268,6 +269,7 @@ public final class SyntaxEditorComparisonView: NSView {
             originalLayout.refreshTextSettings()
         }
         displayedSelection = selection
+        modifiedLayout.updateReferenceSelection()
         if selectionChanged, let selection {
             modifiedLayout.revealChange(at: selection)
             if showsReference {

@@ -364,6 +364,77 @@ extension SyntaxEditorUITests {
         #expect(abs(originalY - currentOriginalSpan.midY) <= 2)
     }
 
+    @Test("Inline reference selections project from the model across presentation changes")
+    @MainActor
+    func macComparisonRestoresReferenceSelectionAcrossPresentations() async throws {
+        let source = "start\nmiddle\nend\n"
+        let original = "start\nold A\nmiddle\nold B\nend\n"
+        let context = SyntaxEditorTestContext(text: source, language: .plainText)
+        let (view, window) = try await makeMacComparison(original: original, context: context)
+        defer { window.orderOut(nil) }
+        let first = try #require(view.modifiedLayout.deletedViews[0])
+        window.makeFirstResponder(first)
+        first.setSelectedRange(NSRange(location: 1, length: 3))
+        let selection = view.model.original.selectedRange
+        try await changeMacComparison(view, to: .sideBySide)
+        try await changeMacComparison(view, to: .inline)
+        let restored = try #require(view.modifiedLayout.deletedViews[0])
+        #expect(restored !== first)
+        #expect(restored.selectedRange() == NSRange(location: 1, length: 3))
+        #expect(view.model.original.selectedRange == selection)
+
+        try await changeMacComparison(view, to: .sideBySide)
+        let a = (original as NSString).range(of: "old A\n")
+        let b = (original as NSString).range(of: "old B\n")
+        let spanning = NSRange(location: a.location + 1, length: b.upperBound - 1 - a.location - 1)
+        view.originalEditor.textView.setSelectedRange(spanning)
+        try await changeMacComparison(view, to: .inline)
+        let restoredA = try #require(view.modifiedLayout.deletedViews[0])
+        let restoredB = try #require(view.modifiedLayout.deletedViews[1])
+        #expect(restoredA.selectedRange() == NSRange(location: 1, length: a.length - 1))
+        #expect(restoredB.selectedRange() == NSRange(location: 0, length: b.length - 1))
+        #expect(view.model.original.selectedRange == spanning)
+
+        let delivery = try #require(view.comparisonDeliveryForTesting)
+        let selections = await delivery.values { view.model.original.selectedRange }
+        let lastSelection = NSRange(location: b.location + 1, length: 2)
+        restoredB.setSelectedRange(NSRange(location: 1, length: 2))
+        #expect(await selections.waitUntilValue(lastSelection))
+        await view.waitForPendingComparisonRefreshForTesting()
+        #expect(restoredA.selectedRange().length == 0)
+        #expect(restoredB.selectedRange() == NSRange(location: 1, length: 2))
+        #expect(view.model.original.selectedRange == lastSelection)
+        #expect(context.model.text == source)
+    }
+
+    @Test("Recycled inline views restore the reference selection without publishing a new selection")
+    @MainActor
+    func macComparisonRestoresReferenceSelectionAfterRecycling() async throws {
+        let common = (0..<200).map { "common \($0)\n" }.joined()
+        let context = SyntaxEditorTestContext(text: "start\n" + common, language: .plainText)
+        let (view, window) = try await makeMacComparison(original: "start\nremoved value\n" + common, context: context)
+        defer { window.orderOut(nil) }
+        let editor = view.modifiedEditor
+        let old = try #require(view.modifiedLayout.deletedViews[0])
+        window.makeFirstResponder(old)
+        old.setSelectedRange(NSRange(location: 2, length: 4))
+        let originalSelection = view.model.original.selectedRange
+        window.makeFirstResponder(editor.textView)
+        let far = try #require(view.modifiedLayout.lineFrame(120))
+        editor.contentView.scroll(to: NSPoint(x: editor.contentView.bounds.minX, y: far.minY))
+        editor.reflectScrolledClipView(editor.contentView)
+        layoutMacComparison(view)
+        #expect(view.modifiedLayout.deletedViews[0] == nil)
+        #expect(old.window == nil)
+        editor.contentView.scroll(to: NSPoint(x: editor.contentView.bounds.minX, y: 0))
+        editor.reflectScrolledClipView(editor.contentView)
+        layoutMacComparison(view)
+        let recreated = try #require(view.modifiedLayout.deletedViews[0])
+        #expect(recreated !== old)
+        #expect(recreated.selectedRange() == NSRange(location: 2, length: 4))
+        #expect(view.model.original.selectedRange == originalSelection)
+    }
+
     @Test("Deleted block layer colors follow their effective appearance without relayout")
     @MainActor
     func macComparisonDeletedColorsFollowAppearance() async throws {
