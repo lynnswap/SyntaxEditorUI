@@ -39,8 +39,26 @@ public final class SyntaxEditorComparisonView: NSView {
     var comparisonDeliveryForTesting: PortableObservationTracking.Token? { comparisonObservation }
     var comparisonConfigurationDeliveryForTesting: PortableObservationTracking.Token? { configurationObservation }
 
-    func waitForPendingComparisonRefreshForTesting() async {
-        while let task = refreshTask { await task.value }
+    private var refreshWaitersForTesting: [CheckedContinuation<Void, Never>] = []
+    var displayedPresentationForTesting: SyntaxEditorComparisonModel.Presentation? { displayedContent?.presentation }
+
+    func waitForPendingComparisonRefreshForTesting(until isReady: () -> Bool = { true }) async {
+        while refreshTask != nil || !isComparisonCurrentForTesting || !isReady() {
+            if let task = refreshTask {
+                await task.value
+            } else {
+                await withCheckedContinuation { refreshWaitersForTesting.append($0) }
+            }
+        }
+    }
+
+    private var isComparisonCurrentForTesting: Bool {
+        displayedContent == ContentIdentity(
+            originalRevision: model.original.textRevision,
+            modifiedRevision: model.modified.textRevision,
+            isReady: model.changes != nil,
+            presentation: model.presentation
+        ) && displayedSelection == model.selectedChangeIndex
     }
 
     private struct ContentIdentity: Equatable {
@@ -225,6 +243,9 @@ public final class SyntaxEditorComparisonView: NSView {
             self.refreshTask = nil
             self.refreshComparison()
         }
+        let waiters = refreshWaitersForTesting
+        refreshWaitersForTesting.removeAll()
+        for waiter in waiters { waiter.resume() }
     }
 
     private func refreshComparison() {

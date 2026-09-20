@@ -400,7 +400,9 @@ extension SyntaxEditorUITests {
         let lastSelection = NSRange(location: b.location + 1, length: 2)
         restoredB.setSelectedRange(NSRange(location: 1, length: 2))
         #expect(await selections.waitUntilValue(lastSelection))
-        await view.waitForPendingComparisonRefreshForTesting()
+        await view.waitForPendingComparisonRefreshForTesting {
+            restoredA.selectedRange().length == 0
+        }
         #expect(restoredA.selectedRange().length == 0)
         #expect(restoredB.selectedRange() == NSRange(location: 1, length: 2))
         #expect(view.model.original.selectedRange == lastSelection)
@@ -1078,7 +1080,9 @@ extension SyntaxEditorUITests {
         let presentations = await delivery.values { view.model.presentation }
         view.model.presentation = presentation
         #expect(await presentations.waitUntilValue(presentation))
-        await view.waitForPendingComparisonRefreshForTesting()
+        await view.waitForPendingComparisonRefreshForTesting {
+            view.displayedPresentationForTesting == presentation
+        }
         layoutMacComparison(view)
     }
 
