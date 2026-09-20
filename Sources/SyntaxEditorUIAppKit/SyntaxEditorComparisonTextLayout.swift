@@ -141,6 +141,14 @@ final class SyntaxEditorComparisonTextLayout {
 
         required init(coder: NSCoder) { fatalError("init(coder:) has not been implemented") }
         override var isFlipped: Bool { true }
+        override var isOpaque: Bool { false }
+
+        override func draw(_ dirtyRect: NSRect) {
+            // NSRulerView's default drawing fills its own background first.
+            drawHashMarksAndLabels(in: dirtyRect)
+            drawMarkers(in: dirtyRect)
+        }
+
         override func drawHashMarksAndLabels(in rect: NSRect) {
             comparisonLayout?.drawRuler(self, dirtyRect: rect)
         }
@@ -148,8 +156,10 @@ final class SyntaxEditorComparisonTextLayout {
 
     private func drawRuler(_ ruler: ComparisonRuler, dirtyRect: CGRect) {
         guard let editor else { return }
-        editor.backgroundColor.setFill()
-        dirtyRect.fill()
+        if editor.drawsBackground {
+            editor.backgroundColor.setFill()
+            dirtyRect.fill()
+        }
         let font = NSFont.monospacedDigitSystemFont(ofSize: 10, weight: .regular)
         func draw(_ number: Int, at point: CGPoint, change: Int?, deleted: Bool = false) {
             let y = ruler.convert(point, from: editor.textView).y

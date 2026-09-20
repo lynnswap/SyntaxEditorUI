@@ -207,6 +207,29 @@ extension SyntaxEditorUITests {
         #expect(caretInEditor.minX >= referenceRuler.ruleThickness)
     }
 
+    @Test("Transparent comparison editors leave the ruler background transparent")
+    @MainActor
+    func macComparisonRulerRespectsTransparentBackground() async throws {
+        let context = SyntaxEditorTestContext(
+            text: "unchanged\n", language: .plainText,
+            theme: syntaxEditorUITestTheme(background: syntaxEditorUITestColor(hex: 0xFFFFFF)),
+            drawsBackground: false
+        )
+        let (view, window) = try await makeMacComparison(original: context.model.text, context: context)
+        defer { window.orderOut(nil) }
+        try await changeMacComparison(view, to: .sideBySide)
+        for editor in [view.modifiedEditor, view.originalEditor] {
+            #expect(!editor.drawsBackground)
+            let ruler = try #require(editor.verticalRulerView)
+            let (bitmap, graphics) = try comparisonBitmap(size: ruler.bounds.size)
+            graphics.cgContext.setFillColor(red: 0, green: 0, blue: 1, alpha: 1)
+            graphics.cgContext.fill(ruler.bounds)
+            ruler.displayIgnoringOpacity(ruler.bounds, in: graphics)
+            let background = try #require(bitmap.colorAt(x: 20, y: bitmap.pixelsHigh / 2)?.usingColorSpace(.deviceRGB))
+            #expect(background.redComponent < 0.01 && background.greenComponent < 0.01 && background.blueComponent > 0.99)
+        }
+    }
+
     @Test("Side-by-side comparisons draw row and intraline backgrounds across the viewport")
     @MainActor
     func macComparisonDrawsRowAndIntralineBackgrounds() async throws {
