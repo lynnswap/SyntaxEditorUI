@@ -53,12 +53,20 @@ public struct SyntaxEditorTextChange: Equatable, Sendable {
 
             let oldUTF16 = Array(oldText.utf16)
             let newUTF16 = Array(newText.utf16)
-            let prefixLength = commonPrefixLength(oldUTF16, newUTF16)
-            let suffixLength = commonSuffixLength(
+            var prefixLength = commonPrefixLength(oldUTF16, newUTF16)
+            if prefixLength > 0, prefixLength < oldUTF16.count,
+               UTF16.isTrailSurrogate(oldUTF16[prefixLength]) {
+                prefixLength -= 1
+            }
+            var suffixLength = commonSuffixLength(
                 oldUTF16,
                 newUTF16,
                 prefixLength: prefixLength
             )
+            if suffixLength > 0,
+               UTF16.isTrailSurrogate(oldUTF16[oldUTF16.count - suffixLength]) {
+                suffixLength -= 1
+            }
 
             let oldChangeEnd = oldUTF16.count - suffixLength
             let newChangeEnd = newUTF16.count - suffixLength
