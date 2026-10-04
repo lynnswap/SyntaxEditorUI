@@ -12,6 +12,8 @@ struct SyntaxEditorMarkedTextUndoAnchor {
 
 /// A UIKit text-input and scroll view backed by an app-owned model.
 ///
+/// Await ``SyntaxEditorModel/prepare()`` during app setup before creating the view.
+///
 /// Use the model to observe text and selection changes or update editor
 /// settings. The view manages text input, syntax rendering, and scrolling;
 /// the app remains responsible for loading and saving the document.

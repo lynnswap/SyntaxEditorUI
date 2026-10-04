@@ -81,6 +81,8 @@ public final class SyntaxEditorComparisonModel {
 
     /// Creates a comparison with an app-owned modified document.
     ///
+    /// Await ``SyntaxEditorModel/prepare()`` during app setup before creating a comparison.
+    ///
     /// - Parameters:
     ///   - originalText: Reference contents. No file or source-control operations are performed.
     ///   - modified: The existing model to display and edit.

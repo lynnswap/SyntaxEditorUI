@@ -4,6 +4,23 @@ Update an app that uses an earlier SyntaxEditorUI release.
 
 Choose the section for the version you are upgrading to. Older sections describe the API at that release; the current API reference is the source of truth for new integrations.
 
+## Unreleased
+
+ObservationBridge is now pinned to 0.14.0. The minimum OS versions are iOS and
+Mac Catalyst 18.4, macOS 15.4, and visionOS 2.4.
+
+Prepare observation once during asynchronous app setup, and await completion
+before constructing editor views or comparison models:
+
+```swift
+try await SyntaxEditorModel.prepare()
+```
+
+Preparation errors propagate to the caller. Handle them in your app's startup
+flow. Repeated calls share preparation across the process. Existing editor and
+comparison initializers remain synchronous after preparation. Creating plain
+document models and preparing syntax highlighting do not require this call.
+
 ## v0.15.0
 
 These notes apply when upgrading from `v0.14.x` or earlier to `v0.15.0`.

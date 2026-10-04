@@ -7,14 +7,26 @@ Includes syntax highlighting, find, undo, keyboard shortcuts, common code-editin
 ## Requirements
 
 - Swift 6.3+
-- iOS 18+, Mac Catalyst 18+, or visionOS 2+
-- macOS 15+
+- iOS 18.4+, Mac Catalyst 18.4+, or visionOS 2.4+
+- macOS 15.4+
 
 ## Installation
 
 Add [SyntaxEditorUI](https://github.com/lynnswap/SyntaxEditorUI) as a Swift package dependency in Xcode, then add the **SyntaxEditorUI** product to your application target.
 
 ## Quick start
+
+Prepare the observation runtime during asynchronous app setup before creating
+editor views or comparison models:
+
+```swift
+import SyntaxEditorUI
+
+try await SyntaxEditorModel.prepare()
+```
+
+Await completion and handle a preparation failure in your app's startup flow.
+Repeated calls share the same preparation. Then create the editor:
 
 ```swift
 import SwiftUI

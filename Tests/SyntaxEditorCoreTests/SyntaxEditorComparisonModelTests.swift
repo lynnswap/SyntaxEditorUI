@@ -7,6 +7,10 @@ import SyntaxEditorCore
 @Suite("Editor comparison model", .timeLimit(.minutes(1)))
 @MainActor
 struct SyntaxEditorComparisonModelTests {
+    init() async throws {
+        try await SyntaxEditorModel.prepare()
+    }
+
     @Test("Compares existing documents without changing their state")
     func basicComparison() async throws {
         let document = SyntaxEditorModel(text: "a\nnew\nz\n", selectedRange: NSRange(location: 2, length: 0))

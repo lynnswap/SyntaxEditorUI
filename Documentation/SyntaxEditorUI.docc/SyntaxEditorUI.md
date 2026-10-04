@@ -6,7 +6,10 @@ Build editable code and plain-text views, including document comparisons, with S
 
 Import `SyntaxEditorUI` and create a ``SyntaxEditorModel`` for each document. Pass the model to ``SyntaxEditor`` in SwiftUI or choose a native editor for your platform.
 
-The package requires Swift 6.3 or later, with iOS 18+, Mac Catalyst 18+, visionOS 2+, or macOS 15+. The app owns loading and saving; the model owns the current editor state.
+Await ``SyntaxEditorModel/prepare()`` during app setup before creating editor views
+or comparison models. The package requires Swift 6.3 or later, with iOS 18.4+,
+Mac Catalyst 18.4+, visionOS 2.4+, or macOS 15.4+. The app owns loading and saving;
+the model owns the current editor state.
 
 ## Topics
 
@@ -18,6 +21,7 @@ The package requires Swift 6.3 or later, with iOS 18+, Mac Catalyst 18+, visionO
 ### Editor state
 
 - ``SyntaxEditorModel``
+- ``SyntaxEditorModel/prepare()``
 - ``SyntaxEditorTextChange``
 
 ### Document comparison

@@ -4,6 +4,9 @@ Compare reference text with the current document while keeping the current docum
 
 ## Create a comparison
 
+Await ``SyntaxEditorModel/prepare()`` during app setup before creating a comparison
+model. See <doc:GettingStarted> for the preparation contract.
+
 A ``SyntaxEditorComparisonModel`` combines reference text with a ``SyntaxEditorModel`` for the current document. Pass your existing document model as `modified` to keep its text, selection, and settings.
 
 In SwiftUI, retain the comparison model in persistent state and pass it to ``SyntaxEditorComparison``:

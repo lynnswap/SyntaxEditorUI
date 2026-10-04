@@ -11,10 +11,10 @@ let syntaxEditorSwiftSettings: [SwiftSetting] = [
 let package = Package(
     name: "SyntaxEditorUI",
     platforms: [
-        .iOS(.v18),
-        .macCatalyst(.v18),
-        .macOS(.v15),
-        .visionOS(.v2),
+        .iOS("18.4"),
+        .macCatalyst("18.4"),
+        .macOS("15.4"),
+        .visionOS("2.4"),
     ],
     products: [
         .library(
@@ -33,7 +33,7 @@ let package = Package(
         .package(url: "https://github.com/tree-sitter-grammars/tree-sitter-toml", exact: "0.7.0"),
         .package(url: "https://github.com/tree-sitter-grammars/tree-sitter-xml", exact: "0.7.0"),
         .package(url: "https://github.com/lynnswap/tree-sitter-swift", exact: "0.1.0"),
-        .package(url: "https://github.com/lynnswap/ObservationBridge", exact: "0.13.0"),
+        .package(url: "https://github.com/lynnswap/ObservationBridge", exact: "0.14.0"),
         .package(url: "https://github.com/ordo-one/benchmark", exact: "1.34.1", traits: []),
     ],
     targets: [
