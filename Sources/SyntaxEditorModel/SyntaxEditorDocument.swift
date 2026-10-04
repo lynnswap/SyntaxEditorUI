@@ -1,4 +1,5 @@
 import Observation
+import ObservationBridge
 import Foundation
 import SyntaxEditorCoreTypes
 import SyntaxEditorTheme
@@ -11,9 +12,21 @@ import SyntaxEditorTheme
 ///
 /// Access the model on the main actor. Text and selection ranges use UTF-16
 /// coordinates, matching `NSRange` operations on `NSString`.
+/// Await ``prepare()`` during app setup before creating an editor or comparison.
 @MainActor
 @Observable
 public final class SyntaxEditorModel {
+    /// Prepares the observation runtime used by editors and document comparisons.
+    ///
+    /// Await this once during asynchronous app setup before constructing editor
+    /// views or comparison models. Repeated and concurrent calls share the runtime
+    /// preparation across the process. Plain document state can be created before
+    /// preparation completes.
+    /// - Throws: An observation runtime preparation failure or cancellation.
+    public static func prepare() async throws {
+        try await PortableObservationTracking.prepare()
+    }
+
     private var textStorage: String
     private var selectedRangeStorage: NSRange
 

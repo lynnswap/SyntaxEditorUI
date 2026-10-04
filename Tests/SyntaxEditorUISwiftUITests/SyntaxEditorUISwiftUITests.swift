@@ -1,10 +1,15 @@
 import SwiftUI
 import Testing
+import SyntaxEditorUI
 import SyntaxEditorUITestSupport
 @testable import SyntaxEditorUISwiftUI
 
 @MainActor
 struct SyntaxEditorUISwiftUITests {
+    init() async throws {
+        try await SyntaxEditorModel.prepare()
+    }
+
     @Test("SyntaxEditorUISwiftUI exposes the comparison wrapper")
     func exposesComparisonWrapper() {
         let context = SyntaxEditorUITestContext(text: "let value = 1")

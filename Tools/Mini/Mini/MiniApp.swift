@@ -44,6 +44,7 @@ final class AppDelegate: UIResponder, UIApplicationDelegate {
 @MainActor
 final class SceneDelegate: UIResponder, UIWindowSceneDelegate {
     var window: UIWindow?
+    private var preparationTask: Task<Void, Never>?
 
     func scene(
         _ scene: UIScene,
@@ -53,11 +54,33 @@ final class SceneDelegate: UIResponder, UIWindowSceneDelegate {
         guard let windowScene = scene as? UIWindowScene else { return }
 
         let window = UIWindow(windowScene: windowScene)
-        window.rootViewController = MiniSplitViewController(
-            model: MiniEditorSession(configuration: .current)
-        )
+        let startupController = UIViewController()
+        window.rootViewController = startupController
         self.window = window
         window.makeKeyAndVisible()
+
+        preparationTask = Task { @MainActor [weak self, weak window] in
+            do {
+                try await SyntaxEditorModel.prepare()
+                try Task.checkCancellation()
+                guard let self, let window, self.window === window else { return }
+                window.rootViewController = MiniSplitViewController(
+                    model: MiniEditorSession(configuration: .current)
+                )
+            } catch is CancellationError {
+                return
+            } catch {
+                var configuration = UIContentUnavailableConfiguration.empty()
+                configuration.text = "Editor Unavailable"
+                configuration.secondaryText = error.localizedDescription
+                startupController.contentUnavailableConfiguration = configuration
+            }
+        }
+    }
+
+    func sceneDidDisconnect(_ scene: UIScene) {
+        preparationTask?.cancel()
+        preparationTask = nil
     }
 }
 #elseif canImport(AppKit)
@@ -75,6 +98,7 @@ private protocol MiniUndoRedoMenuActions: AnyObject {
 final class AppDelegate: NSObject, NSApplicationDelegate {
     private static var sharedDelegate: AppDelegate?
     private var windowController: MiniWindowController?
+    private var preparationTask: Task<Void, Never>?
 
     static func main() {
         let application = NSApplication.shared
@@ -89,12 +113,27 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         prepareBundledSyntaxLanguages()
         installStandardMainMenuIfNeeded()
 
-        let windowController = MiniWindowController(
-            model: MiniEditorSession(configuration: .current)
-        )
-        self.windowController = windowController
-        windowController.showWindow(nil)
-        NSApp.activate()
+        preparationTask = Task { @MainActor [weak self] in
+            do {
+                try await SyntaxEditorModel.prepare()
+                try Task.checkCancellation()
+                guard let self else { return }
+                let windowController = MiniWindowController(
+                    model: MiniEditorSession(configuration: .current)
+                )
+                self.windowController = windowController
+                windowController.showWindow(nil)
+                NSApp.activate()
+            } catch is CancellationError {
+                return
+            } catch {
+                NSAlert(error: error).runModal()
+            }
+        }
+    }
+
+    func applicationWillTerminate(_ notification: Notification) {
+        preparationTask?.cancel()
     }
 
     func applicationShouldTerminateAfterLastWindowClosed(_ sender: NSApplication) -> Bool {

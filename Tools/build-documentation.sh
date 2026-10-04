@@ -86,6 +86,10 @@ for platform in uikit appkit; do
     for module_map in "$build_root/$platform/Build/Intermediates.noindex/GeneratedModuleMaps"*/*.modulemap; do
         module_map_flags+=(-Xcc "-fmodule-map-file=$module_map")
     done
+    # Dependencies can publish their own maps instead of Xcode-generated ones.
+    while IFS= read -r -d '' module_map; do
+        module_map_flags+=(-I "${module_map%/*}" -Xcc "-fmodule-map-file=$module_map")
+    done < <(find "$build_root/SourcePackages/checkouts" -type f -name module.modulemap -print0)
 
     xcrun swift-symbolgraph-extract \
         -module-name SyntaxEditorUI \
