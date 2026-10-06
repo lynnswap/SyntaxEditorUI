@@ -6,7 +6,7 @@ Choose the section for the version you are upgrading to. Older sections describe
 
 ## Unreleased
 
-ObservationBridge is now pinned to 0.14.0. The minimum OS versions are iOS and
+ObservationBridge is now pinned to 0.14.1. The minimum OS versions are iOS and
 Mac Catalyst 18.4, macOS 15.4, and visionOS 2.4.
 
 Prepare observation once during asynchronous app setup, and await completion
