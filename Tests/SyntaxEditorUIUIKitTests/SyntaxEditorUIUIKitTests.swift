@@ -7,10 +7,6 @@ import UIKit
 
 @MainActor
 struct SyntaxEditorUIUIKitTests {
-    init() async throws {
-        try await SyntaxEditorModel.prepare()
-    }
-
     @Test("SyntaxEditorUIUIKit exposes the UIKit editor surface")
     func exposesUIKitEditorSurface() {
         let context = SyntaxEditorUITestContext(text: "let value = 1")

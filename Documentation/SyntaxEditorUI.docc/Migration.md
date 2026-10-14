@@ -6,20 +6,16 @@ Choose the section for the version you are upgrading to. Older sections describe
 
 ## Unreleased
 
-ObservationBridge is now pinned to 0.14.1. The minimum OS versions are iOS and
-Mac Catalyst 18.4, macOS 15.4, and visionOS 2.4.
+ObservationBridge is now pinned to 0.15.0. Editors and comparison models prepare observation on first use. You can
+remove startup logic that waits for ``SyntaxEditorModel/prepare()`` before
+creating them.
 
-Prepare observation once during asynchronous app setup, and await completion
-before constructing editor views or comparison models:
-
-```swift
-try await SyntaxEditorModel.prepare()
-```
-
-Preparation errors propagate to the caller. Handle them in your app's startup
-flow. Repeated calls share preparation across the process. Existing editor and
-comparison initializers remain synchronous after preparation. Creating plain
-document models and preparing syntax highlighting do not require this call.
+The existing `prepare()` API remains available for optional asynchronous warm-up.
+Its errors still propagate to the caller, and repeated calls reuse prepared
+runtime handles. Synchronous editor and comparison creation can perform runtime
+lookup or wait for work already in progress. See <doc:GettingStarted> to prepare
+that work earlier. Syntax highlighting preparation and the minimum OS versions
+are unchanged.
 
 ## v0.15.0
 

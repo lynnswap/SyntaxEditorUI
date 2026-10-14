@@ -4,9 +4,6 @@ Host the editor in a macOS window or view-controller hierarchy.
 
 ## Create a native editor
 
-Await ``SyntaxEditorModel/prepare()`` during app setup before constructing editor
-or comparison views. See <doc:GettingStarted> for the preparation contract.
-
 ```swift
 import AppKit
 import SyntaxEditorUI
