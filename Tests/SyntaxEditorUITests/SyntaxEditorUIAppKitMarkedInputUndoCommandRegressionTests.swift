@@ -12,7 +12,7 @@ extension SyntaxEditorUITests {
     @Test("SyntaxEditorView reflects document text replacements on macOS with optional preparation", arguments: [false, true])
     @MainActor
     func syntaxEditorViewMacTextObservation(preparesObservation: Bool) async throws {
-        let preparation = preparesObservation ? Task.detached { try await SyntaxEditorModel.prepare() } : nil
+        let preparation = preparesObservation ? Task.detached { try await PortableObservationTracking.prepare() } : nil
         let model = SyntaxEditorTestContext(text: "const answer = 42;", language: SyntaxLanguage.javascript)
         let editorView = SyntaxEditorView(testContext: model)
         guard let delivery = editorView.modelDeliveryForTesting else {

@@ -13,7 +13,7 @@ extension SyntaxEditorUITests {
     @Test("SyntaxEditorViewController renders source-of-truth state on iOS with optional preparation", arguments: [false, true])
     @MainActor
     func syntaxEditorViewControllerIOSRendersSourceOfTruthState(preparesObservation: Bool) async throws {
-        let preparation = preparesObservation ? Task.detached { try await SyntaxEditorModel.prepare() } : nil
+        let preparation = preparesObservation ? Task.detached { try await PortableObservationTracking.prepare() } : nil
         let model = SyntaxEditorTestContext(text: "{}", language: SyntaxLanguage.javascript)
         let controller = SyntaxEditorViewController(testContext: model)
         controller.loadViewIfNeeded()

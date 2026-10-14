@@ -29,7 +29,7 @@ struct SyntaxEditorComparisonModelTests {
 
     @Test("Comparison results invalidate immediately with optional preparation", .serialized, arguments: [false, true])
     func updates(preparesObservation: Bool) async throws {
-        let preparation = preparesObservation ? Task.detached { try await SyntaxEditorModel.prepare() } : nil
+        let preparation = preparesObservation ? Task.detached { try await PortableObservationTracking.prepare() } : nil
         let document = SyntaxEditorModel(text: "a\n")
         let model = SyntaxEditorComparisonModel(originalText: "a\n", modified: document)
         #expect(try await ready(model).isEmpty)
