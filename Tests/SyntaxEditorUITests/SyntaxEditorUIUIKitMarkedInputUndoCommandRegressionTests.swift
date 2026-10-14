@@ -10,9 +10,10 @@ import UIKit
 @testable import SyntaxEditorUIUIKit
 
 extension SyntaxEditorUITests {
-    @Test("SyntaxEditorViewController renders source-of-truth state on iOS")
+    @Test("SyntaxEditorViewController renders source-of-truth state on iOS with optional preparation", arguments: [false, true])
     @MainActor
-    func syntaxEditorViewControllerIOSRendersSourceOfTruthState() async {
+    func syntaxEditorViewControllerIOSRendersSourceOfTruthState(preparesObservation: Bool) async throws {
+        let preparation = preparesObservation ? Task.detached { try await PortableObservationTracking.prepare() } : nil
         let model = SyntaxEditorTestContext(text: "{}", language: SyntaxLanguage.javascript)
         let controller = SyntaxEditorViewController(testContext: model)
         controller.loadViewIfNeeded()
@@ -51,6 +52,7 @@ extension SyntaxEditorUITests {
             controller.editorView.text
         }
         #expect(await replacementRenderedText.waitUntilValue("let replacement = true"))
+        try await preparation?.value
     }
 
     @Test("SyntaxEditorView is the iOS custom scroll text input surface")

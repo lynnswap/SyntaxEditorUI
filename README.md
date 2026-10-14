@@ -16,18 +16,6 @@ Add [SyntaxEditorUI](https://github.com/lynnswap/SyntaxEditorUI) as a Swift pack
 
 ## Quick start
 
-Prepare the observation runtime during asynchronous app setup before creating
-editor views or comparison models:
-
-```swift
-import SyntaxEditorUI
-
-try await SyntaxEditorModel.prepare()
-```
-
-Await completion and handle a preparation failure in your app's startup flow.
-Repeated calls share the same preparation. Then create the editor:
-
 ```swift
 import SwiftUI
 import SyntaxEditorUI
@@ -48,6 +36,8 @@ struct EditorView: View {
 ```
 
 Keep one model per document. The editor reads and updates that model; your app handles loading and saving text.
+
+Editors and comparisons prepare observation on first use. You can optionally call `try await SyntaxEditorModel.prepare()` during asynchronous app setup to move runtime lookup off the main actor before it is needed. See [Getting started](Documentation/SyntaxEditorUI.docc/GettingStarted.md) for the preparation contract.
 
 For native UI, pass the same model to `SyntaxEditorView(model:)` or `SyntaxEditorViewController(model:)`. Use `.plainText` for editing without syntax highlighting or code-aware transforms.
 

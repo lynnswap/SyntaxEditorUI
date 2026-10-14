@@ -12,16 +12,17 @@ import SyntaxEditorTheme
 ///
 /// Access the model on the main actor. Text and selection ranges use UTF-16
 /// coordinates, matching `NSRange` operations on `NSString`.
-/// Await ``prepare()`` during app setup before creating an editor or comparison.
+/// Editors and comparisons prepare observation on first use. ``prepare()`` can
+/// warm up the shared runtime during asynchronous app setup.
 @MainActor
 @Observable
 public final class SyntaxEditorModel {
     /// Prepares the observation runtime used by editors and document comparisons.
     ///
-    /// Await this once during asynchronous app setup before constructing editor
-    /// views or comparison models. Repeated and concurrent calls share the runtime
-    /// preparation across the process. Plain document state can be created before
-    /// preparation completes.
+    /// This optional warm-up moves runtime lookup off the main actor before an
+    /// editor or comparison needs it. Repeated calls reuse prepared runtime
+    /// handles. Synchronous initializers can also run before preparation finishes;
+    /// they perform or join any required runtime lookup on the caller's thread.
     /// - Throws: An observation runtime preparation failure or cancellation.
     public static func prepare() async throws {
         try await PortableObservationTracking.prepare()

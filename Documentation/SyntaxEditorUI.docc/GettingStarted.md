@@ -6,22 +6,6 @@ Create an editor backed by one observable model.
 
 Add [SyntaxEditorUI](https://github.com/lynnswap/SyntaxEditorUI) as a Swift package dependency in Xcode, select its **SyntaxEditorUI** product for your app target, and import `SyntaxEditorUI`.
 
-## Prepare observation
-
-Await ``SyntaxEditorModel/prepare()`` during asynchronous app setup before
-creating editor views or comparison models:
-
-```swift
-import SyntaxEditorUI
-
-try await SyntaxEditorModel.prepare()
-```
-
-Preparation is shared across the process, including repeated or concurrent calls.
-Handle a preparation failure in your app's startup flow. Plain document models
-can be created before preparation, but their editor views and comparisons must
-wait for it to finish.
-
 ## Create a SwiftUI editor
 
 Keep the model in `@State` so the editor retains the same document state when SwiftUI reevaluates the view.
@@ -46,6 +30,21 @@ struct EditorView: View {
 ```
 
 For native integration, see <doc:UIKitIntegration> or <doc:AppKitIntegration>. Both platforms accept the same ``SyntaxEditorModel``.
+
+## Optional observation preparation
+
+Editors and comparisons prepare observation when they first need it. You can
+warm up the shared runtime during asynchronous app setup:
+
+```swift
+try await SyntaxEditorModel.prepare()
+```
+
+Repeated calls reuse prepared runtime handles. Editors and comparisons can also
+be created while preparation runs. Their synchronous initializers perform any
+remaining runtime lookup, or wait for the required work already in progress.
+Preparing earlier moves that work off the main actor. An explicit preparation
+call reports errors and cancellation to its caller.
 
 ## Own the document state
 

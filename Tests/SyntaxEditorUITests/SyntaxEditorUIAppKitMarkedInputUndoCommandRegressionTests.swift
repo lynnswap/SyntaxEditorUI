@@ -9,9 +9,10 @@ import AppKit
 @testable import SyntaxEditorUIAppKit
 
 extension SyntaxEditorUITests {
-    @Test("SyntaxEditorView reflects document text replacements on macOS")
+    @Test("SyntaxEditorView reflects document text replacements on macOS with optional preparation", arguments: [false, true])
     @MainActor
-    func syntaxEditorViewMacTextObservation() async {
+    func syntaxEditorViewMacTextObservation(preparesObservation: Bool) async throws {
+        let preparation = preparesObservation ? Task.detached { try await PortableObservationTracking.prepare() } : nil
         let model = SyntaxEditorTestContext(text: "const answer = 42;", language: SyntaxLanguage.javascript)
         let editorView = SyntaxEditorView(testContext: model)
         guard let delivery = editorView.modelDeliveryForTesting else {
@@ -27,6 +28,7 @@ extension SyntaxEditorUITests {
         model.model.replaceText("{\"enabled\":true}")
 
         #expect(await renderedText.waitUntilValue("{\"enabled\":true}"))
+        try await preparation?.value
     }
 
     @Test("SyntaxEditorView clamps macOS selection after whole-document replacement")

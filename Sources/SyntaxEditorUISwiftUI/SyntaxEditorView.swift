@@ -35,7 +35,8 @@ private struct SyntaxEditorContainer: NSViewRepresentable {
 
 /// A SwiftUI code editor backed by an app-owned model.
 ///
-/// Await ``SyntaxEditorModel/prepare()`` during app setup before creating the view.
+/// The native editor starts observation when SwiftUI creates it.
+/// ``SyntaxEditorModel/prepare()`` provides optional asynchronous runtime preparation.
 ///
 /// Keep the `SyntaxEditorModel` in persistent view state, such as `@State`, so
 /// SwiftUI updates reuse the same document and editor settings. User edits and

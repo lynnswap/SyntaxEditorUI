@@ -17,11 +17,7 @@ import AppKit
 /// pipeline that never settles, so it bounds hangs without ever racing a
 /// slow-but-correct run into a flaky false.
 @Suite("SyntaxEditorUI", .serialized, .timeLimit(.minutes(1)))
-struct SyntaxEditorUITests {
-    init() async throws {
-        try await SyntaxEditorModel.prepare()
-    }
-}
+struct SyntaxEditorUITests {}
 
 extension SyntaxEditorUITests {
     @Test("SyntaxEditorView clears undo state when rebinding document")

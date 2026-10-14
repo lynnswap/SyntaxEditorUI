@@ -7,10 +7,6 @@ import SyntaxEditorCore
 @Suite("Editor comparison model", .timeLimit(.minutes(1)))
 @MainActor
 struct SyntaxEditorComparisonModelTests {
-    init() async throws {
-        try await SyntaxEditorModel.prepare()
-    }
-
     @Test("Compares existing documents without changing their state")
     func basicComparison() async throws {
         let document = SyntaxEditorModel(text: "a\nnew\nz\n", selectedRange: NSRange(location: 2, length: 0))
@@ -31,8 +27,9 @@ struct SyntaxEditorComparisonModelTests {
         #expect(document.selectedRange == NSRange(location: 2, length: 0))
     }
 
-    @Test("Reference and document changes invalidate results immediately")
-    func updates() async throws {
+    @Test("Comparison results invalidate immediately with optional preparation", .serialized, arguments: [false, true])
+    func updates(preparesObservation: Bool) async throws {
+        let preparation = preparesObservation ? Task.detached { try await PortableObservationTracking.prepare() } : nil
         let document = SyntaxEditorModel(text: "a\n")
         let model = SyntaxEditorComparisonModel(originalText: "a\n", modified: document)
         #expect(try await ready(model).isEmpty)
@@ -47,6 +44,7 @@ struct SyntaxEditorComparisonModelTests {
         #expect(model.selectedChangeIndex == nil)
         #expect(try await ready(model).isEmpty)
         #expect(document.textRevision == 1)
+        try await preparation?.value
     }
 
     @Test("Normalization-only replacements remain observable")
