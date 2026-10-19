@@ -154,15 +154,43 @@ jobs:
           echo "Destination: ${DESTINATION}"
           echo "Resolved iOS: ${RESOLVED_IOS_VERSION}"
 
-      - name: Run iOS tests
+      - name: Test Simulator helper
+        run: python3 -m unittest discover -s .github/scripts -p 'test_simulator.py'
+
+      - name: Start the test Simulator
+        run: python3 .github/scripts/simulator.py prepare
+
+      - name: Build iOS tests
         run: |
-          xcodebuild test \
+          xcodebuild build-for-testing \
             -workspace SyntaxEditorUI.xcworkspace \
             -scheme SyntaxEditorUITests \
             -testPlan SyntaxEditorUITests \
             -only-testing:SyntaxEditorCorePlatformTests \
             -only-testing:SyntaxEditorUITests \
             -destination "${DESTINATION}" \
+            -derivedDataPath "${RUNNER_TEMP}/CI-DerivedData" \
             -enableCodeCoverage NO \
             -parallel-testing-enabled NO \
             -maximum-concurrent-test-simulator-destinations 1
+
+      - name: Wait for the test Simulator
+        run: python3 .github/scripts/simulator.py wait
+
+      - name: Run prepared tests
+        run: |
+          products="${RUNNER_TEMP}/CI-DerivedData/Build/Products"
+          manifests=("${products}"/*.xctestrun)
+          test "${#manifests[@]}" -eq 1
+          xcodebuild test-without-building \
+            -xctestrun "${manifests[0]}" \
+            -destination "${DESTINATION}" \
+            -enableCodeCoverage NO \
+            -maximum-concurrent-test-simulator-destinations 1 \
+            -parallel-testing-enabled NO \
+            -only-testing:SyntaxEditorCorePlatformTests \
+            -only-testing:SyntaxEditorUITests
+
+      - name: Clean up the test Simulator
+        if: always()
+        run: python3 .github/scripts/simulator.py cleanup
