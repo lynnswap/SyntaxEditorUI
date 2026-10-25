@@ -8,7 +8,7 @@ Includes syntax highlighting, find, undo, keyboard shortcuts, common code-editin
 
 - Swift 6.3+
 - iOS 18.4+, Mac Catalyst 18.4+, or visionOS 2.4+
-- macOS 15.4+
+- macOS 15.4+ on Apple silicon
 
 ## Installation
 
