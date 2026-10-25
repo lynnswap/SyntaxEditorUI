@@ -4,7 +4,15 @@ Update an app that uses an earlier SyntaxEditorUI release.
 
 Choose the section for the version you are upgrading to. Older sections describe the API at that release; the current API reference is the source of truth for new integrations.
 
-## Unreleased
+## v0.19.0
+
+ObservationBridge is now pinned to 0.15.3, which uses ABIBridge 0.13.0. Update any
+explicit ObservationBridge pin in your app to 0.15.3.
+
+macOS builds require Apple silicon. Set Architectures (`ARCHS`) to `arm64` for
+your macOS app target in each build configuration.
+
+## v0.18.0
 
 ObservationBridge is now pinned to 0.15.0. Editors and comparison models prepare observation on first use. You can
 remove startup logic that waits for ``SyntaxEditorModel/prepare()`` before
