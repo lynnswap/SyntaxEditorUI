@@ -1121,14 +1121,29 @@ private enum EditorSpecTool {
                     onlySerializeSwift: true
                 )
             )
+            let toolchainModulesURL = swiftToolchainModulesURL(xcodePath: options.xcodePath)
+            // Each Xcode exports only one of these initializers; `Package.swift`
+            // sets the condition from the version of the Xcode it links against.
+            #if SYMBOL_CACHE_SDK_LOADER_TAKES_MANIFEST_MODULES
             let loader = SymbolCacheSDKLoader(
                 sdkURL: sdkURL,
-                toolchainModulesURL: swiftToolchainModulesURL(xcodePath: options.xcodePath),
+                toolchainModulesURL: toolchainModulesURL,
+                manifestModulesURL: nil,
                 variantName: nil,
                 storage: storage,
                 onlyLoadFromCache: false,
                 useRelativePaths: false
             )
+            #else
+            let loader = SymbolCacheSDKLoader(
+                sdkURL: sdkURL,
+                toolchainModulesURL: toolchainModulesURL,
+                variantName: nil,
+                storage: storage,
+                onlyLoadFromCache: false,
+                useRelativePaths: false
+            )
+            #endif
             loader.addPlatformDeveloperSearchPaths(
                 developerDirectory: URL(fileURLWithPath: options.xcodePath)
                     .appendingPathComponent("Contents/Developer", isDirectory: true)

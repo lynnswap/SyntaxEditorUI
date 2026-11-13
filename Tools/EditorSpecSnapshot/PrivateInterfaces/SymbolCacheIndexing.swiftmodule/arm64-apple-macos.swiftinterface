@@ -76,9 +76,21 @@ public class SymbolCacheSystemIncludeIndex {
 }
 
 public class SymbolCacheSDKLoader {
+    // Xcode 26.
     public init(
         sdkURL: Foundation.URL,
         toolchainModulesURL: Foundation.URL?,
+        variantName: Swift.String?,
+        storage: SymbolCacheIndexing.SymbolCacheSDKStorage,
+        onlyLoadFromCache: Swift.Bool,
+        useRelativePaths: Swift.Bool
+    )
+
+    // Xcode 27.
+    public init(
+        sdkURL: Foundation.URL,
+        toolchainModulesURL: Foundation.URL?,
+        manifestModulesURL: Foundation.URL?,
         variantName: Swift.String?,
         storage: SymbolCacheIndexing.SymbolCacheSDKStorage,
         onlyLoadFromCache: Swift.Bool,
