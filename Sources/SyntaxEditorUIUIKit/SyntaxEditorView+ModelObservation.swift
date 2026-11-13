@@ -103,12 +103,16 @@ extension SyntaxEditorView {
                 activeUndoManager?.removeAllActions()
             }
             let previousSelection = selectedRange
+            // The highlighter may only patch its previous result when the
+            // storage went through the same single edit.
+            var highlightMutation: SyntaxEditorTextChange.Replacement?
             if let change,
                change.textRevision == revision,
                change.kind == .incremental,
                !forceTextUpdate,
                lastAppliedDocumentRevision == revision - 1 {
                 performRawEdits(change.replacements, previousText: previousText)
+                highlightMutation = Self.highlightMutation(change)
             } else {
                 replaceEntireStorageText(nextText)
             }
@@ -128,11 +132,6 @@ extension SyntaxEditorView {
             updateTypingAttributes()
             updateTextContainerForCurrentWrappingMode()
             invalidateTextLayout()
-            let highlightMutation: SyntaxEditorTextChange.Replacement? = if model.latestTextChange?.kind == .wholeDocumentReplacement {
-                nil
-            } else {
-                model.latestTextChange.flatMap(Self.highlightMutation)
-            }
             scheduleHighlight(
                 source: nextText,
                 language: model.language,
