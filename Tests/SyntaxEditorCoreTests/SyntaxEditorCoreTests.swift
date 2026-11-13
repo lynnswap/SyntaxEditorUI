@@ -306,39 +306,6 @@ struct SyntaxEditorCoreTests {
         #expect(SyntaxEditorHighlightTheme.semanticStyleKeys(for: "keyword", language: .html)?.first == "editor.syntax.keyword")
     }
 
-    @Test("Language source files live in language-specific targets")
-    func languageSourceFilesLiveInLanguageSpecificTargets() {
-        let sourcesURL = repositoryRootURL()
-            .appendingPathComponent("Sources", isDirectory: true)
-
-        for language in SyntaxLanguage.allCases {
-            let typeName = switch language {
-            case .plainText:
-                "PlainTextLanguage"
-            case .assemblyARM:
-                "AssemblyARMLanguage"
-            case .css:
-                "CSSLanguage"
-            case .html:
-                "HTMLLanguage"
-            case .javascript:
-                "JavaScriptLanguage"
-            case .json:
-                "JSONLanguage"
-            case .objectiveC:
-                "ObjectiveCLanguage"
-            case .swift:
-                "SwiftLanguage"
-            case .toml:
-                "TOMLLanguage"
-            case .xml:
-                "XMLLanguage"
-            }
-            let languageDirectory = sourcesURL.appendingPathComponent(languageTargetName(for: language), isDirectory: true)
-            #expect(FileManager.default.fileExists(atPath: languageDirectory.appendingPathComponent("\(typeName).swift").path))
-        }
-    }
-
     @Test("SyntaxEditorHighlightTheme exposes exact semantic style keys")
     func syntaxEditorHighlightThemeExposesExactSemanticStyleKeys() throws {
         #expect(

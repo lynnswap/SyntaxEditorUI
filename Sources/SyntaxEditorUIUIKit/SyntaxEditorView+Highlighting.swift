@@ -175,10 +175,6 @@ extension SyntaxEditorView {
         }
     }
 
-    internal func setApplyingHighlightForTesting(_ isApplying: Bool) {
-        isApplyingHighlight = isApplying
-    }
-
     func configureSyntaxRenderingAttributesValidator() {
         layoutManager.renderingAttributesValidator = { [weak self] textLayoutManager, textLayoutFragment in
             MainActor.assumeIsolated {
