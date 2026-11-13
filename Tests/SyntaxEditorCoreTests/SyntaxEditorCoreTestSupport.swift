@@ -3,8 +3,6 @@ import Observation
 import Testing
 @testable import SyntaxEditorCore
 
-func requireObservable<T: Observable>(_ value: T) {}
-
 func applying(_ result: EditorCommandEngine.Result?, to source: String) -> String? {
     guard let result else { return nil }
     return applyingIfValid(result.edits, to: source)

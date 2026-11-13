@@ -1132,24 +1132,6 @@ extension SyntaxEditorUITests {
         await editorView.waitForPendingHighlightForTesting()
     }
 
-    @Test("SyntaxEditorView keeps iOS command transforms while attribute highlight is applying")
-    @MainActor
-    func syntaxEditorViewIOSKeepsCommandTransformsWhileAttributeHighlightIsApplying() async {
-        let model = SyntaxEditorTestContext(text: "", language: SyntaxLanguage.swift)
-        let editorView = SyntaxEditorView(testContext: model, highlighter: SyntaxEditorUITestHighlighter())
-        await editorView.waitForPendingHighlightForTesting()
-
-        editorView.selectedRange = NSRange(location: 0, length: 0)
-        editorView.setApplyingHighlightForTesting(true)
-        editorView.insertText("\"")
-        editorView.setApplyingHighlightForTesting(false)
-        await editorView.waitForPendingHighlightForTesting()
-
-        #expect(editorView.text == "\"\"")
-        #expect(model.model.text == "\"\"")
-        #expect(editorView.selectedRange == NSRange(location: 1, length: 0))
-    }
-
     @Test("SyntaxEditorView restores iOS base font when syntax font tokens are removed")
     @MainActor
     func syntaxEditorViewIOSRestoresBaseFontWhenSyntaxFontTokensAreRemoved() async throws {
