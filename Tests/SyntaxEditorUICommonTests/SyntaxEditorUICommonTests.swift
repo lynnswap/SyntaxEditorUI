@@ -665,8 +665,8 @@ struct SyntaxEditorUICommonTests {
         // Two identical edit sequences: the reference store never checkpoints
         // (high threshold), the checkpointing store folds every few edits.
         // Resolution must match throughout, and the map must stay bounded.
-        func makeStore() -> HighlightRenderSnapshotStore {
-            let store = HighlightRenderSnapshotStore()
+        func makeStore(checkpointThreshold: Int) -> HighlightRenderSnapshotStore {
+            let store = HighlightRenderSnapshotStore(pendingEditCheckpointThreshold: checkpointThreshold)
             store.commitSnapshot(
                 runSet: HighlightRunSet(
                     colorRuns: [
@@ -694,17 +694,14 @@ struct SyntaxEditorUICommonTests {
             edits.append((SyntaxEditorTextChange.Replacement(location: location, length: 0, replacement: "x"), length))
         }
 
-        HighlightRenderSnapshotStore.pendingEditCheckpointThresholdOverrideForTesting = 1_000_000
-        let reference = makeStore()
+        let reference = makeStore(checkpointThreshold: 1_000_000)
         for (mutation, textLength) in edits {
             reference.recordPendingEdit(mutation, currentTextLength: textLength)
         }
         let referenceRuns = reference.colorRuns(in: NSRange(location: 0, length: length))
         let referenceEditCount = reference.pendingEditCountForTesting
 
-        HighlightRenderSnapshotStore.pendingEditCheckpointThresholdOverrideForTesting = 3
-        defer { HighlightRenderSnapshotStore.pendingEditCheckpointThresholdOverrideForTesting = nil }
-        let checkpointing = makeStore()
+        let checkpointing = makeStore(checkpointThreshold: 3)
         for (mutation, textLength) in edits {
             checkpointing.recordPendingEdit(mutation, currentTextLength: textLength)
         }
@@ -722,10 +719,7 @@ struct SyntaxEditorUICommonTests {
 
     @Test("Pending highlight checkpoint carries unresolved dirty ranges until refreshed")
     func pendingHighlightCheckpointCarriesUnresolvedDirtyRangesUntilRefreshed() {
-        HighlightRenderSnapshotStore.pendingEditCheckpointThresholdOverrideForTesting = 3
-        defer { HighlightRenderSnapshotStore.pendingEditCheckpointThresholdOverrideForTesting = nil }
-
-        let store = HighlightRenderSnapshotStore()
+        let store = HighlightRenderSnapshotStore(pendingEditCheckpointThreshold: 3)
         store.commitSnapshot(
             runSet: HighlightRunSet(colorRuns: [], fontRuns: []),
             range: NSRange(location: 0, length: 0),
@@ -830,10 +824,7 @@ struct SyntaxEditorUICommonTests {
         let syntaxFont = NSFont.boldSystemFont(ofSize: 13)
         #endif
 
-        HighlightRenderSnapshotStore.pendingEditCheckpointThresholdOverrideForTesting = 1
-        defer { HighlightRenderSnapshotStore.pendingEditCheckpointThresholdOverrideForTesting = nil }
-
-        let store = HighlightRenderSnapshotStore()
+        let store = HighlightRenderSnapshotStore(pendingEditCheckpointThreshold: 1)
         store.commitSnapshot(
             runSet: HighlightRunSet(
                 colorRuns: [],

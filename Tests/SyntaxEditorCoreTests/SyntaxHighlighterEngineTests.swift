@@ -285,7 +285,7 @@ struct SyntaxHighlighterEngineTests {
         }
 
         // The incremental store still matches a fresh full render.
-        let settled = await engine.currentTokensForTesting()
+        let settled = await engine.currentTokens()
         let fresh = await SyntaxHighlighterEngine().render(source: current, language: .swift)
         #expect(highlightTokensMatch(settled, fresh))
     }
@@ -312,7 +312,7 @@ struct SyntaxHighlighterEngineTests {
             revision: 1
         )
 
-        let settled = await engine.currentTokensForTesting()
+        let settled = await engine.currentTokens()
         let fresh = await SyntaxHighlighterEngine().render(source: next, language: .swift)
 
         // Sanity: the new extension member must actually change the call
@@ -349,7 +349,7 @@ struct SyntaxHighlighterEngineTests {
             revision: 1
         )
         #expect(result.source == next)
-        let settled = await engine.currentTokensForTesting()
+        let settled = await engine.currentTokens()
         let fresh = await SyntaxHighlighterEngine().render(source: next, language: .swift)
         #expect(highlightTokensMatch(settled, fresh))
     }
@@ -384,7 +384,7 @@ struct SyntaxHighlighterEngineTests {
             revision: 1
         )
         #expect(result.tokenPayload == .fullSnapshot)
-        let settled = await engine.currentTokensForTesting()
+        let settled = await engine.currentTokens()
         let fresh = await SyntaxHighlighterEngine().render(source: next, language: .html)
         #expect(highlightTokensMatch(settled, fresh))
     }
@@ -429,10 +429,7 @@ struct SyntaxHighlighterEngineTests {
         let copies = max(1, 60_000 / max(1, unit.utf16.count) + 1)
         let source = String(repeating: unit, count: copies)
 
-        HighlightSession.progressiveResetThresholdOverrideForTesting = 1024
-        defer { HighlightSession.progressiveResetThresholdOverrideForTesting = nil }
-
-        let engine = SyntaxHighlighterEngine()
+        let engine = SyntaxHighlighterEngine(progressiveResetThreshold: 1024)
         var results: [SyntaxEditorHighlighting.Result] = []
         let phases = await engine.resetPhases(source: source, language: .swift, revision: 0)
         for await result in phases {
@@ -456,10 +453,7 @@ struct SyntaxHighlighterEngineTests {
         let copies = max(1, 60_000 / max(1, unit.utf16.count) + 1)
         let source = String(repeating: unit, count: copies)
 
-        HighlightSession.progressiveResetThresholdOverrideForTesting = 1024
-        defer { HighlightSession.progressiveResetThresholdOverrideForTesting = nil }
-
-        let engine = SyntaxHighlighterEngine()
+        let engine = SyntaxHighlighterEngine(progressiveResetThreshold: 1024)
         let phases = await collectHighlightPhases(
             await engine.resetPhases(source: source, language: .javascript, revision: 0)
         )
@@ -489,10 +483,7 @@ struct SyntaxHighlighterEngineTests {
         let copies = max(1, 60_000 / max(1, unit.utf16.count) + 1)
         let source = String(repeating: unit, count: copies)
 
-        HighlightSession.progressiveResetThresholdOverrideForTesting = 1024
-        defer { HighlightSession.progressiveResetThresholdOverrideForTesting = nil }
-
-        let engine = SyntaxHighlighterEngine()
+        let engine = SyntaxHighlighterEngine(progressiveResetThreshold: 1024)
         let phases = await collectHighlightPhases(
             await engine.resetPhases(source: source, language: language, revision: 0)
         )
@@ -527,9 +518,8 @@ struct SyntaxHighlighterEngineTests {
 
         let monolithic = await SyntaxHighlighterEngine().render(source: source, language: language)
 
-        HighlightSession.progressiveResetThresholdOverrideForTesting = 1024
-        defer { HighlightSession.progressiveResetThresholdOverrideForTesting = nil }
-        let progressive = await SyntaxHighlighterEngine().render(source: source, language: language)
+        let progressive = await SyntaxHighlighterEngine(progressiveResetThreshold: 1024)
+            .render(source: source, language: language)
 
         #expect(highlightTokensMatch(progressive, monolithic))
     }
@@ -994,7 +984,7 @@ struct SyntaxHighlighterEngineTests {
         let full = await SyntaxHighlighterEngine()
             .reset(source: updatedSource, language: SyntaxLanguage.javascript, revision: 2)
 
-        #expect(highlightTokensMatch(await engine.currentTokensForTesting(), full.tokens))
+        #expect(highlightTokensMatch(await engine.currentTokens(), full.tokens))
         #expect(refreshRangeUnion(staleUpdate).location == 0)
         #expect(refreshRangeUnion(staleUpdate).length < updatedSource.utf16.count)
     }
@@ -1036,7 +1026,7 @@ struct SyntaxHighlighterEngineTests {
         let full = await SyntaxHighlighterEngine()
             .reset(source: source, language: SyntaxLanguage.swift, revision: 20)
 
-        #expect(highlightTokensMatch(await engine.currentTokensForTesting(), full.tokens))
+        #expect(highlightTokensMatch(await engine.currentTokens(), full.tokens))
     }
 
     @Test("SyntaxHighlighterEngine keeps switch-heavy Swift paste updates finite")
@@ -1088,7 +1078,7 @@ struct SyntaxHighlighterEngineTests {
 
         let full = await SyntaxHighlighterEngine()
             .reset(source: source, language: SyntaxLanguage.swift, revision: 20)
-        #expect(highlightTokensMatch(await engine.currentTokensForTesting(), full.tokens))
+        #expect(highlightTokensMatch(await engine.currentTokens(), full.tokens))
     }
 
     @Test("Swift semantic overlay exits before indexing cancelled paste work")
@@ -1519,7 +1509,7 @@ extension SyntaxHighlighterEngineTests {
             revision: 1
         )
 
-        let settled = await engine.currentTokensForTesting()
+        let settled = await engine.currentTokens()
         let fresh = await SyntaxHighlighterEngine().render(source: next, language: language)
         return highlightTokensMatch(settled, fresh)
     }

@@ -403,7 +403,7 @@ extension SyntaxHighlighterEngine {
         guard result.tokenPayload == .replacement else {
             return result
         }
-        let currentTokens = await currentTokensForTesting()
+        let currentTokens = await currentTokens()
         return SyntaxEditorHighlighting.Result(
             tokens: currentTokens,
             source: result.source,

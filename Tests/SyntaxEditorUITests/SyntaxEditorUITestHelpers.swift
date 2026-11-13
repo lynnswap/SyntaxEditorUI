@@ -330,6 +330,24 @@ actor SyntaxEditorUITestHighlighter: SyntaxEditorHighlighting.Engine {
         self.updateTokenPayload = updateTokenPayload
     }
 
+    func replaceCurrentRequest(
+        with request: SyntaxEditorHighlighting.Request
+    ) async -> AsyncStream<SyntaxEditorHighlighting.Result> {
+        syntaxEditorTestHighlightStream { [self] in
+            switch request.operation {
+            case .reset:
+                await reset(source: request.source, language: request.language, revision: request.revision)
+            case .update(let mutation):
+                await update(
+                    source: request.source,
+                    language: request.language,
+                    mutation: mutation,
+                    revision: request.revision
+                )
+            }
+        }
+    }
+
     func reset(source: String, language: SyntaxLanguage, revision: Int) async -> SyntaxEditorHighlighting.Result {
         resetCount += 1
         if let resetGate {
@@ -411,26 +429,22 @@ actor SyntaxEditorPhasedTestHighlighter: SyntaxEditorHighlighting.Engine {
         self.updateRefreshRange = updateRefreshRange
     }
 
-    func reset(source: String, language: SyntaxLanguage, revision: Int) async -> SyntaxEditorHighlighting.Result {
-        resetCount += 1
-        if let completeGate {
-            await completeGate.suspend()
+    func replaceCurrentRequest(
+        with request: SyntaxEditorHighlighting.Request
+    ) async -> AsyncStream<SyntaxEditorHighlighting.Result> {
+        switch request.operation {
+        case .reset:
+            resetPhases(source: request.source, language: request.language, revision: request.revision)
+        case .update:
+            updatePhases(source: request.source, language: request.language, revision: request.revision)
         }
-        return Self.result(
-            tokens: completeTokens,
-            source: source,
-            language: language,
-            revision: revision,
-            phase: .complete,
-            refreshRange: nil
-        )
     }
 
-    func resetPhases(
+    private func resetPhases(
         source: String,
         language: SyntaxLanguage,
         revision: Int
-    ) async -> AsyncStream<SyntaxEditorHighlighting.Result> {
+    ) -> AsyncStream<SyntaxEditorHighlighting.Result> {
         resetCount += 1
         return Self.phases(
             fastTokens: fastTokens,
@@ -443,33 +457,11 @@ actor SyntaxEditorPhasedTestHighlighter: SyntaxEditorHighlighting.Engine {
         )
     }
 
-    func update(
+    private func updatePhases(
         source: String,
         language: SyntaxLanguage,
-        mutation: SyntaxEditorTextChange.Replacement,
         revision: Int
-    ) async -> SyntaxEditorHighlighting.Result {
-        updateCount += 1
-        if let completeGate {
-            await completeGate.suspend()
-        }
-        return Self.result(
-            tokens: updateCompleteTokens ?? completeTokens,
-            source: source,
-            language: language,
-            revision: revision,
-            phase: .complete,
-            refreshRange: updateRefreshRange,
-            tokenPayload: .replacement
-        )
-    }
-
-    func updatePhases(
-        source: String,
-        language: SyntaxLanguage,
-        mutation: SyntaxEditorTextChange.Replacement,
-        revision: Int
-    ) async -> AsyncStream<SyntaxEditorHighlighting.Result> {
+    ) -> AsyncStream<SyntaxEditorHighlighting.Result> {
         updateCount += 1
         return Self.phases(
             fastTokens: updateFastTokens ?? fastTokens,
@@ -560,6 +552,24 @@ actor SyntaxEditorPhasedTestHighlighter: SyntaxEditorHighlighting.Engine {
     }
 }
 
+/// The stream an engine returns for a request that produces one result.
+private func syntaxEditorTestHighlightStream(
+    _ operation: @escaping @Sendable () async -> SyntaxEditorHighlighting.Result
+) -> AsyncStream<SyntaxEditorHighlighting.Result> {
+    AsyncStream { continuation in
+        let task = Task {
+            let result = await operation()
+            if !Task.isCancelled {
+                continuation.yield(result)
+            }
+            continuation.finish()
+        }
+        continuation.onTermination = { @Sendable _ in
+            task.cancel()
+        }
+    }
+}
+
 private func syntaxEditorTestClampedRange(_ range: NSRange, textLength: Int) -> NSRange {
     let textLength = max(0, textLength)
     let location = min(max(0, range.location), textLength)
@@ -583,6 +593,24 @@ actor SyntaxEditorLanguageAwareTestHighlighter: SyntaxEditorHighlighting.Engine 
         self.jsonTokens = jsonTokens
         self.resetGate = resetGate
         self.updateGate = updateGate
+    }
+
+    func replaceCurrentRequest(
+        with request: SyntaxEditorHighlighting.Request
+    ) async -> AsyncStream<SyntaxEditorHighlighting.Result> {
+        syntaxEditorTestHighlightStream { [self] in
+            switch request.operation {
+            case .reset:
+                await reset(source: request.source, language: request.language, revision: request.revision)
+            case .update(let mutation):
+                await update(
+                    source: request.source,
+                    language: request.language,
+                    mutation: mutation,
+                    revision: request.revision
+                )
+            }
+        }
     }
 
     func reset(source: String, language: SyntaxLanguage, revision: Int) async -> SyntaxEditorHighlighting.Result {
