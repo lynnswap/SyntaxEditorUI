@@ -14,7 +14,18 @@ import SymbolCacheIndexing
 import SymbolCacheSupport
 #endif
 
-private let defaultToolchainAppPath = "/Applications/Xcode.app"
+/// The Xcode the tool reads from unless `--xcode` names another: the one
+/// `DEVELOPER_DIR` names, or else the one `xcode-select` points at. `Package.swift`
+/// picks the frameworks the tool links against by the same rule.
+private let defaultToolchainAppPath: String = {
+    let developerDirectory = ProcessInfo.processInfo.environment["DEVELOPER_DIR"].flatMap { $0.isEmpty ? nil : $0 }
+        ?? (try? FileManager.default.destinationOfSymbolicLink(atPath: "/var/db/xcode_select_link"))
+        ?? "/Applications/Xcode.app/Contents/Developer"
+    return URL(fileURLWithPath: developerDirectory)
+        .deletingLastPathComponent()
+        .deletingLastPathComponent()
+        .path
+}()
 
 private enum SemanticDepth: String, Sendable {
     case currentFile = "current-file"
@@ -186,16 +197,16 @@ private enum ToolError: Error, CustomStringConvertible {
             """
             Usage:
               swift run EditorSpecTool editor-tokens --file <path> [--language swift] [--pretty]
-              swift run EditorSpecTool source-model-tokens --file <path> [--language swift] [--xcode /Applications/Xcode.app] [--pretty] [--no-text]
-              swift run EditorSpecTool xcode-classification-tokens --file <path> [--language swift|css|objectiveC] [--xcode /Applications/Xcode.app] [--semantic-depth current-file|sdk] [--pretty] [--no-text]
-              swift run EditorSpecTool xcode-semantic-tokens --file <path> [--language swift] [--xcode /Applications/Xcode.app] [--xcode-theme default-dark] [--appearance dark] [--pretty] [--no-text]
-              swift run EditorSpecTool xcode-rendered-tokens --file <path> [--language swift|css|objectiveC] [--xcode /Applications/Xcode.app] [--semantic-depth current-file|sdk] [--xcode-theme default-dark] [--pretty] [--no-text]
-              swift run EditorSpecTool xcode-dvt-rendered-tokens --file <path> [--language objectiveC] [--xcode /Applications/Xcode.app] [--xcode-theme default-dark] [--pretty] [--no-text]
-              swift run EditorSpecTool xcode-dvt-language-diagnostics --file <path> [--language swift] [--xcode /Applications/Xcode.app] [--pretty]
-              swift run EditorSpecTool xcode-source-editor-view-diagnostics --file <path> [--language swift] [--xcode /Applications/Xcode.app] [--pretty]
-              swift run EditorSpecTool diff --file <path> [--language swift|css] [--xcode /Applications/Xcode.app] [--pretty] [--include-matches]
-              swift run EditorSpecTool classification-diff --file <path> [--language swift|css|objectiveC] [--xcode /Applications/Xcode.app] [--semantic-depth current-file|sdk] [--pretty] [--include-matches]
-              swift run EditorSpecTool rendered-diff --file <path> [--language swift|css|objectiveC] [--xcode /Applications/Xcode.app] [--semantic-depth current-file|sdk] [--xcode-theme default-dark] [--appearance dark] [--pretty] [--include-matches]
+              swift run EditorSpecTool source-model-tokens --file <path> [--language swift] [--xcode <Xcode.app>] [--pretty] [--no-text]
+              swift run EditorSpecTool xcode-classification-tokens --file <path> [--language swift|css|objectiveC] [--xcode <Xcode.app>] [--semantic-depth current-file|sdk] [--pretty] [--no-text]
+              swift run EditorSpecTool xcode-semantic-tokens --file <path> [--language swift] [--xcode <Xcode.app>] [--xcode-theme default-dark] [--appearance dark] [--pretty] [--no-text]
+              swift run EditorSpecTool xcode-rendered-tokens --file <path> [--language swift|css|objectiveC] [--xcode <Xcode.app>] [--semantic-depth current-file|sdk] [--xcode-theme default-dark] [--pretty] [--no-text]
+              swift run EditorSpecTool xcode-dvt-rendered-tokens --file <path> [--language objectiveC] [--xcode <Xcode.app>] [--xcode-theme default-dark] [--pretty] [--no-text]
+              swift run EditorSpecTool xcode-dvt-language-diagnostics --file <path> [--language swift] [--xcode <Xcode.app>] [--pretty]
+              swift run EditorSpecTool xcode-source-editor-view-diagnostics --file <path> [--language swift] [--xcode <Xcode.app>] [--pretty]
+              swift run EditorSpecTool diff --file <path> [--language swift|css] [--xcode <Xcode.app>] [--pretty] [--include-matches]
+              swift run EditorSpecTool classification-diff --file <path> [--language swift|css|objectiveC] [--xcode <Xcode.app>] [--semantic-depth current-file|sdk] [--pretty] [--include-matches]
+              swift run EditorSpecTool rendered-diff --file <path> [--language swift|css|objectiveC] [--xcode <Xcode.app>] [--semantic-depth current-file|sdk] [--xcode-theme default-dark] [--appearance dark] [--pretty] [--include-matches]
             """
         case let .missingArgument(argument):
             "Missing value for \(argument)"

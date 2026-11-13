@@ -1,6 +1,19 @@
 // swift-tools-version: 6.3
 
+import Foundation
 import PackageDescription
+
+/// The `Contents` directory of the selected Xcode: the one `DEVELOPER_DIR`
+/// names, or else the one `xcode-select` points at.
+let xcodeContentsPath: String = {
+    let developerDirectory = Context.environment["DEVELOPER_DIR"].flatMap { $0.isEmpty ? nil : $0 }
+        ?? (try? FileManager.default.destinationOfSymbolicLink(atPath: "/var/db/xcode_select_link"))
+        ?? "/Applications/Xcode.app/Contents/Developer"
+    return URL(fileURLWithPath: developerDirectory).deletingLastPathComponent().path
+}()
+
+/// Holds the private frameworks `EditorSpecTool` links against.
+let xcodeSharedFrameworksPath = "\(xcodeContentsPath)/SharedFrameworks"
 
 let syntaxEditorSwiftSettings: [SwiftSetting] = [
     .swiftLanguageMode(.v6),
@@ -67,25 +80,29 @@ let package = Package(
                 .strictMemorySafety(),
                 .unsafeFlags([
                     "-I", "Tools/EditorSpecSnapshot/PrivateInterfaces",
-                    "-F", "/Applications/Xcode.app/Contents/SharedFrameworks",
+                    "-F", xcodeSharedFrameworksPath,
                 ], .when(platforms: [.macOS])),
             ],
             linkerSettings: [
                 .unsafeFlags([
-                    "-F", "/Applications/Xcode.app/Contents/SharedFrameworks",
+                    "-F", xcodeSharedFrameworksPath,
                     "-framework", "SourceEditor",
                     "-framework", "SourceModel",
                     "-framework", "SourceModelSupport",
                     "-framework", "SymbolCache",
                     "-framework", "SymbolCacheIndexing",
                     "-framework", "SymbolCacheSupport",
-                    "/Applications/Xcode.app/Contents/SharedFrameworks/SourceModel.framework/Versions/A/SourceModel",
-                    "/Applications/Xcode.app/Contents/SharedFrameworks/SourceModelSupport.framework/Versions/A/SourceModelSupport",
-                    "/Applications/Xcode.app/Contents/SharedFrameworks/SymbolCache.framework/Versions/A/SymbolCache",
-                    "/Applications/Xcode.app/Contents/SharedFrameworks/SymbolCacheIndexing.framework/Versions/A/SymbolCacheIndexing",
-                    "/Applications/Xcode.app/Contents/SharedFrameworks/SymbolCacheSupport.framework/Versions/A/SymbolCacheSupport",
+                    "\(xcodeSharedFrameworksPath)/SourceModel.framework/Versions/A/SourceModel",
+                    "\(xcodeSharedFrameworksPath)/SourceModelSupport.framework/Versions/A/SourceModelSupport",
+                    "\(xcodeSharedFrameworksPath)/SymbolCache.framework/Versions/A/SymbolCache",
+                    "\(xcodeSharedFrameworksPath)/SymbolCacheIndexing.framework/Versions/A/SymbolCacheIndexing",
+                    "\(xcodeSharedFrameworksPath)/SymbolCacheSupport.framework/Versions/A/SymbolCacheSupport",
+                    // Xcode 26 frameworks are installed as `@rpath/<name>.framework`,
+                    // Xcode 27 ones as `@rpath/SharedFrameworks/<name>.framework`.
                     "-Xlinker", "-rpath",
-                    "-Xlinker", "/Applications/Xcode.app/Contents/SharedFrameworks",
+                    "-Xlinker", xcodeSharedFrameworksPath,
+                    "-Xlinker", "-rpath",
+                    "-Xlinker", xcodeContentsPath,
                 ], .when(platforms: [.macOS])),
             ]
         ),

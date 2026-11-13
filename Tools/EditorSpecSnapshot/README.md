@@ -3,6 +3,11 @@
 Local tools for deriving reference syntax-coloring expectations from the
 developer toolchain installed on this Mac.
 
+The tools use the Xcode that `DEVELOPER_DIR` names, or else the one
+`xcode-select` points at. `EditorSpecTool` links against that Xcode's private
+frameworks when it is built. Pass `--xcode <Xcode.app>` to read specifications
+and themes from another installation.
+
 These tools are intentionally outside the package products. They are for
 fixture generation and investigation only; the package runtime must not depend
 on private frameworks or local developer-tool installation details.

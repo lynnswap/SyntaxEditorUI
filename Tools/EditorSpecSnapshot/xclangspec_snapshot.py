@@ -9,7 +9,18 @@ from pathlib import Path
 from typing import Any
 
 
-DEFAULT_TOOLCHAIN_APP = Path("/Applications/Xcode.app")
+def selected_toolchain_app() -> Path:
+    """Return the Xcode that DEVELOPER_DIR or xcode-select selects."""
+    result = subprocess.run(
+        ["xcode-select", "-p"], capture_output=True, text=True, check=False
+    )
+    developer_dir = result.stdout.strip()
+    if result.returncode == 0 and developer_dir:
+        return Path(developer_dir).parents[1]
+    return Path("/Applications/Xcode.app")
+
+
+DEFAULT_TOOLCHAIN_APP = selected_toolchain_app()
 SOURCE_MODEL_RESOURCE_SUFFIX = Path(
     "Contents/SharedFrameworks/SourceModel.framework/Versions/A/Resources"
 )
