@@ -4,17 +4,24 @@ import Foundation
 import PackageDescription
 
 /// The `Contents` directory of the selected Xcode: the one `DEVELOPER_DIR`
-/// names, or else the one `xcode-select` points at.
+/// names, or else the one `xcode-select` points at. When the selection is not
+/// inside an Xcode app, as with the standalone Command Line Tools, this is the
+/// default install location.
 let xcodeContentsPath: String = {
-    let developerDirectory = Context.environment["DEVELOPER_DIR"].flatMap { $0.isEmpty ? nil : $0 }
+    let selection = Context.environment["DEVELOPER_DIR"].flatMap { $0.isEmpty ? nil : $0 }
         ?? (try? FileManager.default.destinationOfSymbolicLink(atPath: "/var/db/xcode_select_link"))
-        ?? "/Applications/Xcode.app/Contents/Developer"
-    let url = URL(fileURLWithPath: developerDirectory)
-    // `DEVELOPER_DIR` may name the app bundle instead of its `Contents/Developer`.
-    let contents = url.pathExtension == "app"
-        ? url.appendingPathComponent("Contents")
-        : url.deletingLastPathComponent()
-    return contents.path
+    if let selection {
+        let url = URL(fileURLWithPath: selection)
+        // `DEVELOPER_DIR` may name the app bundle instead of its `Contents/Developer`.
+        if url.pathExtension == "app" {
+            return url.appendingPathComponent("Contents").path
+        }
+        let contents = url.deletingLastPathComponent()
+        if contents.deletingLastPathComponent().pathExtension == "app" {
+            return contents.path
+        }
+    }
+    return "/Applications/Xcode.app/Contents"
 }()
 
 /// Holds the private frameworks `EditorSpecTool` links against.

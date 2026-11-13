@@ -10,13 +10,19 @@ from typing import Any
 
 
 def selected_toolchain_app() -> Path:
-    """Return the Xcode that DEVELOPER_DIR or xcode-select selects."""
+    """Return the Xcode that DEVELOPER_DIR or xcode-select selects.
+
+    Falls back to the default install location when the selection is not inside
+    an Xcode app, as with the standalone Command Line Tools.
+    """
     result = subprocess.run(
         ["xcode-select", "-p"], capture_output=True, text=True, check=False
     )
     developer_dir = result.stdout.strip()
     if result.returncode == 0 and developer_dir:
-        return Path(developer_dir).parents[1]
+        app = Path(developer_dir).parents[1]
+        if app.suffix == ".app":
+            return app
     return Path("/Applications/Xcode.app")
 
 
