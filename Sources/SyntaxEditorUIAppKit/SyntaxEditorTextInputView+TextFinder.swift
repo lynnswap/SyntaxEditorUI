@@ -39,20 +39,11 @@ extension SyntaxEditorTextInputView {
         }
     }
 
-    func setFindHighlightRangesForTesting(_ ranges: [NSRange]?) {
-        findHighlightRangesOverrideForTesting = ranges
-        rebuildFindHighlightRangeIndex()
-        updateFindHighlightsForVisibleFragments()
-    }
-
     private func currentFindHighlightRanges() -> [NSRange] {
-        if let findHighlightRangesOverrideForTesting {
-            return findHighlightRangesOverrideForTesting
-        }
         guard usesFindBar, isIncrementalSearchingEnabled else {
             return []
         }
-        return textFinder.incrementalMatchRanges.map(\.rangeValue)
+        return incrementalMatchRangesSource()
     }
 
     func rebuildFindHighlightRangeIndex() {
@@ -63,8 +54,6 @@ extension SyntaxEditorTextInputView {
     }
 
     func handleIncrementalMatchRangesChange(changedRanges: [NSRange]?) {
-        guard findHighlightRangesOverrideForTesting == nil else { return }
-
         rebuildFindHighlightRangeIndex()
         if let changedRanges, !changedRanges.isEmpty {
             updateFindHighlightsForVisibleFragments(intersecting: changedRanges)

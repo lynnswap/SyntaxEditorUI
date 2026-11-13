@@ -458,7 +458,6 @@ extension SyntaxEditorTextInputView {
                 }
             }
         }
-        syntaxRenderingAttributeApplicationCountForTesting += 1
     }
 
     private func syntaxRenderingAttributeDisplayRanges(for targetRange: NSRange) -> [NSRange] {
@@ -486,7 +485,7 @@ extension SyntaxEditorTextInputView {
         return ranges
     }
 
-    private func syntaxRenderingAttributeTargetRanges(
+    func syntaxRenderingAttributeTargetRanges(
         in textLayoutFragment: NSTextLayoutFragment,
         fragmentRange: NSRange,
         targetBounds: CGRect? = nil
@@ -553,23 +552,6 @@ extension SyntaxEditorTextInputView {
             in: textLayoutFragment,
             using: textLayoutManager,
             targetBounds: targetBounds
-        )
-    }
-
-    func resetSyntaxRenderingAttributeCountersForTesting() {
-        syntaxRenderingAttributeApplicationCountForTesting = 0
-        syntaxRenderingAttributeUTF16LengthForTesting = 0
-        syntaxRenderingAttributeColorRunCountForTesting = 0
-    }
-
-    func syntaxRenderingAttributeTargetRangesForTesting(
-        in textLayoutFragment: NSTextLayoutFragment
-    ) -> [NSRange] {
-        let fragmentRange = textRange(for: textLayoutFragment)
-        guard fragmentRange.length > 0 else { return [] }
-        return syntaxRenderingAttributeTargetRanges(
-            in: textLayoutFragment,
-            fragmentRange: fragmentRange
         )
     }
 

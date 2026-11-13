@@ -62,10 +62,6 @@
       editorView.update(model: nextModel)
     }
 
-    internal func synchronizeDocumentForTesting() {
-      editorView.synchronizeDocumentForTesting()
-    }
-
     /// Forwards a native text-change notification to the editor.
     ///
     /// Use the model for app-driven edits. See ``SyntaxEditorView-77bw3/textDidChange(_:)``.

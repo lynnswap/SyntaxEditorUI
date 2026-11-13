@@ -21,32 +21,6 @@ extension SyntaxEditorTextInputView {
         }
         return [NSValue(range: NSRange(location: 0, length: storage.length))]
     }
-    var insertionIndicatorDisplayModeForTesting: NSTextInsertionIndicator.DisplayMode {
-        insertionIndicator.displayMode
-    }
-    var insertionIndicatorFrameForTesting: NSRect {
-        insertionIndicator.frame
-    }
-    var insertionIndicatorIsHiddenForTesting: Bool {
-        insertionIndicator.isHidden
-    }
-
-    var selectionHighlightRectsForTesting: [CGRect] {
-        textContentView.subviews
-            .compactMap { $0 as? SyntaxEditorTextInputView.TextLayoutFragmentView }
-            .flatMap(\.selectionHighlightRects)
-    }
-    var findHighlightRectsForTesting: [CGRect] {
-        textContentView.subviews
-            .compactMap { $0 as? SyntaxEditorTextInputView.TextLayoutFragmentView }
-            .flatMap(\.findHighlightRects)
-    }
-    var findCandidateHighlightFillColorForTesting: NSColor {
-        SyntaxEditorTextInputView.TextLayoutFragmentView.findCandidateHighlightFillColor
-    }
-    var findCandidateHighlightCornerRadiusForTesting: CGFloat {
-        SyntaxEditorTextInputView.TextLayoutFragmentView.findCandidateHighlightCornerRadius
-    }
 
     var textStorage: NSTextStorage? { storage }
     var storage: NSTextStorage { textSystem.textStorage }

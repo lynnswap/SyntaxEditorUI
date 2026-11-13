@@ -17,7 +17,12 @@ final class SyntaxEditorTextInputView: NSView, @preconcurrency NSTextInputClient
     let textFinder = NSTextFinder()
     let insertionIndicator = NSTextInsertionIndicator(frame: .zero)
     private var incrementalMatchRangesObservation: NSKeyValueObservation?
-    var findHighlightRangesOverrideForTesting: [NSRange]?
+    /// Where the ranges of the current incremental search come from. The
+    /// default asks the text finder; tests substitute it to show matches
+    /// without running a find bar session.
+    lazy var incrementalMatchRangesSource: () -> [NSRange] = { [textFinder] in
+        textFinder.incrementalMatchRanges.map(\.rangeValue)
+    }
     var findHighlightRangeIndex = TextRangeIntersectionIndex(utf16Length: 0)
 
     var guardedUndoManager: UndoManager?
@@ -69,7 +74,6 @@ final class SyntaxEditorTextInputView: NSView, @preconcurrency NSTextInputClient
     var bracketHighlightRanges: [NSRange] = []
     var bracketHighlightColor: NSColor?
     var fragmentDisplayInvalidationCount = 0
-    var syntaxRenderingAttributeApplicationCountForTesting = 0
     var syntaxRenderingAttributeUTF16LengthForTesting = 0
     var syntaxRenderingAttributeColorRunCountForTesting = 0
     var lineMetrics = DocumentLineMetrics(tabWidth: 4)

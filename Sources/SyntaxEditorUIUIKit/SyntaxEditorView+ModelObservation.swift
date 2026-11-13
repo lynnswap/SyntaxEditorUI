@@ -6,18 +6,6 @@ import UIKit
 
 @MainActor
 extension SyntaxEditorView {
-    internal func synchronizeDocumentForTesting() {
-        applyObservedConfiguration(
-            language: model.language,
-            isEditable: model.isEditable,
-            lineWrappingEnabled: model.lineWrappingEnabled,
-            theme: model.theme,
-            drawsBackground: model.drawsBackground,
-            fontSizeDelta: model.fontSizeDelta
-        )
-        applyObservedModelChange(forceTextUpdate: !text.utf16.elementsEqual(model.text.utf16))
-        applyObservedSelection(model.selectedRange)
-    }
     func startModelObservation(
         schedulesInitialHighlight: Bool = true,
         skipsInitialModelDelivery: Bool = false
