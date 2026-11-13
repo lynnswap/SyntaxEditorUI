@@ -7,8 +7,6 @@ import TreeSitterSwift
 package struct SwiftLanguage: SyntaxLanguageSupport {
     package init() {}
 
-    package var language: SyntaxLanguage { .swift }
-    package var displayName: String { "Swift" }
     package var treeSitterSupport: SyntaxLanguageTreeSitterSupport? {
         SyntaxLanguageTreeSitterSupport(
             name: "Swift",

@@ -660,10 +660,6 @@ package final class HighlightRenderSnapshotStore {
         return font
     }
 
-    package func effectiveForegroundColor(at location: Int) -> SyntaxEditorTheme.Color? {
-        foregroundColor(at: location) ?? baseForeground
-    }
-
     package func updateBaseForeground(_ color: SyntaxEditorTheme.Color?, textLength nextTextLength: Int? = nil) {
         let nextTextLength = nextTextLength.map { max(0, $0) } ?? currentTextLength
         let baseChanged: Bool

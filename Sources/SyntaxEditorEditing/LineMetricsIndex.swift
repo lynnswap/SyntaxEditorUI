@@ -14,7 +14,6 @@ package final class LineMetricsIndex {
     package private(set) var fullRebuildCount = 0
     package var lineCount: Int { lineOffsets.lineCount }
     package var cachedMaxColumnEntryCountForTesting: Int { maxColumnHeap.count }
-    package var lineCountForTesting: Int { lineOffsets.lineCount }
 
     package init(source: String = "", tabWidth: Int) {
         self.tabWidth = max(1, tabWidth)
@@ -23,9 +22,8 @@ package final class LineMetricsIndex {
 
     package func reset(source: String) {
         fullRebuildCount += 1
-        let metrics = Self.metrics(in: source, baseOffset: 0, tabWidth: tabWidth)
         lineOffsets.reset(source: source)
-        lineColumns = metrics.columns
+        lineColumns = Self.lineColumns(in: source, tabWidth: tabWidth)
         rebuildColumnCountsAndHeap()
     }
 
@@ -37,32 +35,31 @@ package final class LineMetricsIndex {
         }
 
         let nsSource = previousSource as NSString
-        let oldSegment = nsSource.substring(with: affected.range)
+        let oldSegment = nsSource.substring(with: affected)
         let localEdits = edits.map {
             SyntaxEditorTextChange.Replacement(
-                range: NSRange(location: $0.range.location - affected.range.location, length: $0.range.length),
+                range: NSRange(location: $0.range.location - affected.location, length: $0.range.length),
                 replacement: $0.replacement
             )
         }
         let newSegment = SyntaxEditorTextChange.applying(localEdits, to: oldSegment)
-        var metrics = Self.metrics(in: newSegment, baseOffset: affected.range.location, tabWidth: tabWidth)
-        if affected.range.upperBound < nsSource.length,
+        var replacementColumns = Self.lineColumns(in: newSegment, tabWidth: tabWidth)
+        if affected.upperBound < nsSource.length,
            Self.endsWithLineBreak(newSegment),
-           metrics.starts.count > 1 {
-            metrics.starts.removeLast()
-            metrics.columns.removeLast()
+           replacementColumns.count > 1 {
+            replacementColumns.removeLast()
         }
 
-        let startIndex = lineIndex(containingUTF16Offset: affected.range.location)
-        let endIndex = oldLineEndIndex(for: affected.range, sourceUTF16Length: nsSource.length)
+        let startIndex = lineIndex(containingUTF16Offset: affected.location)
+        let endIndex = oldLineEndIndex(for: affected, sourceUTF16Length: nsSource.length)
         removeColumnCounts(lineColumns[startIndex..<endIndex])
         let replacementLineLengths = Self.lineLengths(
             in: newSegment,
-            dropsTrailingEmptyLine: affected.range.upperBound < nsSource.length
+            dropsTrailingEmptyLine: affected.upperBound < nsSource.length
         )
         lineOffsets.replaceLines(in: startIndex..<endIndex, with: replacementLineLengths)
-        lineColumns.replaceSubrange(startIndex..<endIndex, with: metrics.columns)
-        addColumnCounts(metrics.columns)
+        lineColumns.replaceSubrange(startIndex..<endIndex, with: replacementColumns)
+        addColumnCounts(replacementColumns)
     }
 
     package func horizontalDocumentWidth(
@@ -83,7 +80,7 @@ package final class LineMetricsIndex {
 }
 
 private extension LineMetricsIndex {
-    func affectedRange(for edits: [SyntaxEditorTextChange.Replacement], in source: String) -> (range: NSRange, includesLineBreakMutation: Bool)? {
+    func affectedRange(for edits: [SyntaxEditorTextChange.Replacement], in source: String) -> NSRange? {
         let nsSource = source as NSString
         let sorted = edits.sorted { $0.range.location < $1.range.location }
         guard let first = sorted.first, let last = sorted.last else { return nil }
@@ -100,7 +97,7 @@ private extension LineMetricsIndex {
             let nextLineRange = nsSource.lineRange(for: NSRange(location: range.upperBound, length: 0))
             range.length = nextLineRange.upperBound - range.location
         }
-        return (range, touchesLineBreak)
+        return range
     }
 
     func lineIndex(containingUTF16Offset offset: Int) -> Int {
@@ -131,18 +128,14 @@ private extension LineMetricsIndex {
         return lengths
     }
 
-    static func metrics(in source: String, baseOffset: Int, tabWidth: Int) -> (starts: [Int], columns: [Int]) {
-        var starts = [baseOffset]
+    static func lineColumns(in source: String, tabWidth: Int) -> [Int] {
         var columns: [Int] = []
         var currentColumns = 0
-        var utf16Offset = baseOffset
 
         for character in source {
-            let utf16Length = character.utf16.count
             if isLineBreak(character) {
                 columns.append(currentColumns)
                 currentColumns = 0
-                starts.append(utf16Offset + utf16Length)
             } else {
                 currentColumns += SyntaxEditorDisplayColumnUtilities.columnWidth(
                     for: character,
@@ -150,11 +143,10 @@ private extension LineMetricsIndex {
                     tabWidth: tabWidth
                 )
             }
-            utf16Offset += utf16Length
         }
 
         columns.append(currentColumns)
-        return (starts, columns)
+        return columns
     }
 
     static func endsWithLineBreak(_ source: String) -> Bool {

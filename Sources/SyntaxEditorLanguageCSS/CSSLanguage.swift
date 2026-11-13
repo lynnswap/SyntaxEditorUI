@@ -7,8 +7,6 @@ import TreeSitterCSS
 package struct CSSLanguage: SyntaxLanguageSupport {
     package init() {}
 
-    package var language: SyntaxLanguage { .css }
-    package var displayName: String { "CSS" }
     package var treeSitterSupport: SyntaxLanguageTreeSitterSupport? {
         SyntaxLanguageTreeSitterSupport(
             name: "CSS",

@@ -7,7 +7,6 @@ import UIKit
 struct SyntaxEditorMarkedTextUndoAnchor {
     let source: String
     let selectedRange: NSRange
-    let refreshStartUTF16: Int
 }
 
 /// A UIKit text-input and scroll view backed by an app-owned model.

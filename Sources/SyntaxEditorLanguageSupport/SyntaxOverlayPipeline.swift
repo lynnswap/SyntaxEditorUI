@@ -94,19 +94,3 @@ package struct SyntaxOverlaySyntaxIDMask: OptionSet {
         }
     }
 }
-
-package enum RefreshRangePolicy {
-    package static func lineEnvelope(containing range: NSRange, in source: NSString) -> NSRange {
-        guard source.length > 0 else {
-            return NSRange(location: 0, length: 0)
-        }
-
-        let clampedRange = SyntaxEditorRangeUtilities.clampedRange(range, utf16Length: source.length)
-        if clampedRange.length > 0 {
-            return source.lineRange(for: clampedRange)
-        }
-
-        let location = min(clampedRange.location, source.length - 1)
-        return source.lineRange(for: NSRange(location: location, length: 0))
-    }
-}

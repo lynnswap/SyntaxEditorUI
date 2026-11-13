@@ -182,15 +182,13 @@
       if textNeedsUpdate {
         prepareSyntaxHighlightRenderingForPendingTextChange(
           mutation: highlightMutation,
-          source: text,
-          refreshStartUTF16: 0
+          source: text
         )
         scheduleHighlight(
           source: text,
           language: model.language,
           revision: revision,
-          mutation: highlightMutation,
-          refreshStartUTF16: 0
+          mutation: highlightMutation
         )
       }
       lastAppliedDocumentRevision = revision
@@ -247,7 +245,7 @@
         hasCachedSyntaxFontRunChanges = false
       }
       if themeChanged {
-        applyBaseForegroundColorChange(from: previousTheme, to: theme, language: language)
+        applyBaseForegroundColorChange(to: theme, language: language)
       }
       lastAppliedTheme = theme
       lastAppliedThemeAppearance = appearance
@@ -276,8 +274,7 @@
         scheduleHighlight(
           source: textView.string,
           language: language,
-          revision: lastAppliedDocumentRevision,
-          refreshStartUTF16: 0
+          revision: lastAppliedDocumentRevision
         )
       } else if (themeChanged || fontSizeDeltaChanged) && schedulesHighlight {
         reapplyCachedHighlight(
@@ -289,7 +286,6 @@
     }
 
     func applyBaseForegroundColorChange(
-      from _: SyntaxEditorTheme?,
       to theme: SyntaxEditorTheme,
       language: SyntaxLanguage? = nil
     ) {

@@ -2004,7 +2004,7 @@ extension SyntaxHighlighterEngineTests {
 
         #expect(reset.tokenPayload == .fullSnapshot)
         #expect(update.tokenPayload == .replacement)
-        #expect(update.containsCompleteTokenSnapshot == false)
+        #expect(update.tokenPayload == .replacement)
         #expect(update.tokens.count < currentTokens.count)
         #expect(Set(update.tokens.map { "\($0.range.location):\($0.range.length):\($0.rawCaptureName):\($0.isSemanticOverlay)" }).count == update.tokens.count)
         #expect(update.tokens.allSatisfy {

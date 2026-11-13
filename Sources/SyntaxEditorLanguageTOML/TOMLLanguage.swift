@@ -7,8 +7,6 @@ import TreeSitterTOML
 package struct TOMLLanguage: SyntaxLanguageSupport {
     package init() {}
 
-    package var language: SyntaxLanguage { .toml }
-    package var displayName: String { "TOML" }
     package var treeSitterSupport: SyntaxLanguageTreeSitterSupport? {
         SyntaxLanguageTreeSitterSupport(
             name: "TOML",

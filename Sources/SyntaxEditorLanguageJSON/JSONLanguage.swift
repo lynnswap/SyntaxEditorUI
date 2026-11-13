@@ -7,8 +7,6 @@ import TreeSitterJSON
 package struct JSONLanguage: SyntaxLanguageSupport {
     package init() {}
 
-    package var language: SyntaxLanguage { .json }
-    package var displayName: String { "JSON" }
     package var treeSitterSupport: SyntaxLanguageTreeSitterSupport? {
         SyntaxLanguageTreeSitterSupport(
             name: "JSON",

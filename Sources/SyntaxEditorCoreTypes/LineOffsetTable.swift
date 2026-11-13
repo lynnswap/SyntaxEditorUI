@@ -83,19 +83,6 @@ package final class LineOffsetTable {
         prefixTree = PrefixSumTree(values: lineLengths)
     }
 
-    package func updateLineLength(at index: Int, to nextLength: Int) {
-        guard lineLengths.indices.contains(index) else { return }
-        let nextLength = max(0, nextLength)
-        let delta = nextLength - lineLengths[index]
-        guard delta != 0 else { return }
-        lineLengths[index] = nextLength
-        prefixTree.add(delta, at: index)
-    }
-
-    package func lineLengthsSnapshot() -> [Int] {
-        lineLengths
-    }
-
     package static func lineLengths(in source: String) -> [Int] {
         var lengths: [Int] = []
         var currentLength = 0

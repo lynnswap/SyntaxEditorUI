@@ -7,8 +7,6 @@ import TreeSitterXML
 package struct XMLLanguage: SyntaxLanguageSupport {
     package init() {}
 
-    package var language: SyntaxLanguage { .xml }
-    package var displayName: String { "XML" }
     package var treeSitterSupport: SyntaxLanguageTreeSitterSupport? {
         SyntaxLanguageTreeSitterSupport(
             name: "XML",

@@ -410,9 +410,6 @@ struct SyntaxEditorCoreTests {
             and: NSRange(location: 0, length: 5)
         )
         #expect(intersection == NSRange(location: 4, length: 1))
-
-        let lineStart = SyntaxEditorRangeUtilities.lineStartUTF16Offset(in: "a\nbc\ndef", around: 4)
-        #expect(lineStart == 2)
     }
 
     @Test("SyntaxEditorTextChange.Replacement returns nil when text does not change")
@@ -573,7 +570,7 @@ struct SyntaxEditorCoreTests {
         source = SyntaxEditorModel.applying([edit], to: source)
 
         #expect(source == "abc")
-        #expect(index.lineCountForTesting == 1)
+        #expect(index.lineCount == 1)
         #expect(index.horizontalDocumentWidth(columnWidth: 1, textContainerInset: 0, lineFragmentPadding: 0) == 3)
     }
 

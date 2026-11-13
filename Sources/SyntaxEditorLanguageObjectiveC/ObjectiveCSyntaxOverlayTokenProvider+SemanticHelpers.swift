@@ -968,7 +968,6 @@ extension ObjectiveCSyntaxOverlayTokenProvider {
 
     static func appendObjectiveCSemanticIndexSignature(
         from line: NSString,
-        lineOffset _: Int,
         into hasher: inout Hasher
     ) -> Bool {
         let lineString = line as String

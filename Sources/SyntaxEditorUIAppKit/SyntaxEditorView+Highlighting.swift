@@ -245,10 +245,6 @@
       textView.lineMetrics.fullRebuildCount
     }
 
-    internal func materializeSyntaxForegroundForTesting(in range: NSRange) {
-      textView.setNeedsDisplayForTextRanges([range])
-    }
-
     internal func syntaxForegroundColorForTesting(at location: Int) -> NSColor? {
       guard location >= 0,
         location < textStorage.length
@@ -388,17 +384,6 @@
       }
     }
 
-    private func resumeSkippedHighlightPhaseWaiterForTesting(id: Int, result: Bool) {
-      guard
-        let waiterIndex = skippedHighlightPhaseWaitersForTesting.firstIndex(where: { $0.id == id })
-      else {
-        return
-      }
-
-      let waiter = skippedHighlightPhaseWaitersForTesting.remove(at: waiterIndex)
-      waiter.continuation.resume(returning: result)
-    }
-
     private func resumeSkippedHighlightPhaseWaitersForTesting(
       revision: Int? = nil,
       phase: SyntaxEditorHighlighting.Result.Phase? = nil,
@@ -424,8 +409,7 @@
       source: String,
       language: SyntaxLanguage,
       revision: Int,
-      mutation: SyntaxEditorTextChange.Replacement? = nil,
-      refreshStartUTF16 _: Int = 0
+      mutation: SyntaxEditorTextChange.Replacement? = nil
     ) {
       highlightTask?.cancel()
       let requestID = nextScheduledHighlightRequestID
@@ -512,16 +496,12 @@
         recordSkippedHighlightPhaseForTesting(result.phase, revision: result.revision)
         return
       }
-      let refreshRanges = highlightApplicationRefreshRanges(
-        for: result,
-        mutation: mutation
-      )
       await applyHighlightFromScheduledTask(
         result.tokens,
         expectedRevision: result.revision,
         source: result.source,
         language: result.language,
-        refreshRanges: refreshRanges,
+        refreshRanges: result.refreshRanges,
         mutation: mutation,
         recordsCache: result.phase == .complete,
         phase: result.phase,
@@ -554,14 +534,6 @@
       }
 
       return materializedHighlightRevision < result.revision
-    }
-
-    private func highlightApplicationRefreshRanges(
-      for result: SyntaxEditorHighlighting.Result,
-      mutation: SyntaxEditorTextChange.Replacement?
-    ) -> [NSRange] {
-      _ = mutation
-      return result.refreshRanges
     }
 
     private static func highlightTargetRanges(_ ranges: [NSRange], textLength: Int) -> [NSRange] {
@@ -687,7 +659,7 @@
       textView.lineMetrics.reset(source: nextText)
       TextEditingTransaction.perform(on: textSystem.textContentStorage) { textStorage in
         textStorage.setAttributedString(
-          NSAttributedString(string: nextText, attributes: storageBaseAttributes()))
+          NSAttributedString(string: nextText, attributes: baseAttributes()))
       }
       textView.setSelectedRange(textView.selectedRange())
       textView.invalidateTextLayout()
@@ -696,7 +668,7 @@
     func applyStorageTextEdits(_ edits: [SyntaxEditorTextChange.Replacement]) -> Bool {
       guard editsAreValid(edits) else { return false }
 
-      let base = storageBaseAttributes()
+      let base = baseAttributes()
       let previousSource = textStorage.string
       TextEditingTransaction.perform(on: textSystem.textContentStorage) { textStorage in
         for edit in edits.sorted(by: { $0.range.location > $1.range.location }) {
@@ -1356,8 +1328,7 @@
 
     func prepareSyntaxHighlightRenderingForPendingTextChange(
       mutation: SyntaxEditorTextChange.Replacement?,
-      source: String,
-      refreshStartUTF16 _: Int
+      source: String
     ) {
       guard let mutation else {
         clearSyntaxHighlightRendering()
@@ -1384,10 +1355,6 @@
       }
       let fallbackLocation = min(location, textLength - 1)
       return NSRange(location: fallbackLocation, length: 1)
-    }
-
-    private func suspendSyntaxHighlightMaterialization() {
-      invalidateVisibleTextDisplay()
     }
 
     private func clearMaterializedSyntaxHighlightRendering() {

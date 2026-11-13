@@ -114,8 +114,7 @@ extension SyntaxEditorView {
         if nextMarkedRange != nil || clampedRange.length > 0 {
             beginMarkedTextUndoSessionIfNeeded(
                 source: source,
-                selectedRange: self.selectedRange,
-                editStartUTF16: clampedRange.location
+                selectedRange: self.selectedRange
             )
         }
 
@@ -124,10 +123,6 @@ extension SyntaxEditorView {
         commitTextReplacements(
             [SyntaxEditorTextChange.Replacement(range: clampedRange, replacement: replacement)],
             selectedRange: nextSelection,
-            refreshStartUTF16: SyntaxEditorRangeUtilities.lineStartUTF16Offset(
-                in: source,
-                around: clampedRange.location
-            ),
             registersUndo: false,
             preservesMarkedTextUndoAnchor: true,
             notifiesInputDelegate: false
@@ -139,8 +134,7 @@ extension SyntaxEditorView {
         if nextMarkedRange == nil {
             finishMarkedTextUndoSessionIfNeeded(
                 finalText: text,
-                selectedRange: currentSelectedRange,
-                editStartUTF16: clampedRange.location
+                selectedRange: currentSelectedRange
             )
         }
     }
@@ -171,18 +165,13 @@ extension SyntaxEditorView {
         commitTextReplacements(
             [SyntaxEditorTextChange.Replacement(range: clampedRange, replacement: replacement)],
             selectedRange: nextSelection,
-            refreshStartUTF16: SyntaxEditorRangeUtilities.lineStartUTF16Offset(
-                in: source,
-                around: clampedRange.location
-            ),
             registersUndo: false,
             preservesMarkedTextUndoAnchor: true,
             notifiesInputDelegate: true
         )
         finishMarkedTextUndoSessionIfNeeded(
             finalText: text,
-            selectedRange: currentSelectedRange,
-            editStartUTF16: clampedRange.location
+            selectedRange: currentSelectedRange
         )
     }
 
@@ -194,8 +183,7 @@ extension SyntaxEditorView {
             reapplyTextAttributes(in: previousMarkedRange)
             finishMarkedTextUndoSessionIfNeeded(
                 finalText: text,
-                selectedRange: selectedRange,
-                editStartUTF16: previousMarkedRange.location
+                selectedRange: selectedRange
             )
         }
     }
@@ -1050,34 +1038,24 @@ extension SyntaxEditorView {
         let restoreLocation = min(markedRange.location, restoreText.utf16.count)
         markedTextUndoAnchor = SyntaxEditorMarkedTextUndoAnchor(
             source: restoreText,
-            selectedRange: NSRange(location: restoreLocation, length: 0),
-            refreshStartUTF16: SyntaxEditorRangeUtilities.lineStartUTF16Offset(
-                in: restoreText,
-                around: restoreLocation
-            )
+            selectedRange: NSRange(location: restoreLocation, length: 0)
         )
     }
 
     func beginMarkedTextUndoSessionIfNeeded(
         source: String,
-        selectedRange: NSRange,
-        editStartUTF16: Int
+        selectedRange: NSRange
     ) {
         guard markedTextUndoAnchor == nil else { return }
         markedTextUndoAnchor = SyntaxEditorMarkedTextUndoAnchor(
             source: source,
-            selectedRange: selectedRange,
-            refreshStartUTF16: SyntaxEditorRangeUtilities.lineStartUTF16Offset(
-                in: source,
-                around: editStartUTF16
-            )
+            selectedRange: selectedRange
         )
     }
 
     func finishMarkedTextUndoSessionIfNeeded(
         finalText: String,
-        selectedRange: NSRange,
-        editStartUTF16: Int
+        selectedRange: NSRange
     ) {
         guard let restore = markedTextUndoAnchor else { return }
         markedTextUndoAnchor = nil
@@ -1094,8 +1072,7 @@ extension SyntaxEditorView {
                     ],
                     in: restore.source
                 ),
-                selectedRange: restore.selectedRange,
-                refreshStartUTF16: restore.refreshStartUTF16
+                selectedRange: restore.selectedRange
             ),
             counterpart: EditorCommandEngine.UndoState(
                 edits: [
@@ -1104,11 +1081,7 @@ extension SyntaxEditorView {
                         replacement: finalText
                     ),
                 ],
-                selectedRange: selectedRange,
-                refreshStartUTF16: SyntaxEditorRangeUtilities.lineStartUTF16Offset(
-                    in: finalText,
-                    around: editStartUTF16
-                )
+                selectedRange: selectedRange
             )
         )
     }

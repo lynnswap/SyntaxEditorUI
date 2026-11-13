@@ -102,39 +102,30 @@
       }
       lastAppliedDocumentRevision = change.textRevision
 
-      let editStartUTF16 = pendingEditStartUTF16 ?? textView.selectedRange().location
       let previousSelection = pendingUndoSelection
       clearPendingTextChangeState()
-      let refreshStartUTF16 = SyntaxEditorRangeUtilities.lineStartUTF16Offset(
-        in: nextText,
-        around: editStartUTF16
-      )
       if !isApplyingUndoRedo {
         registerUndoForTextInput(
           previousText: previousText,
           nextText: nextText,
           previousSelection: previousSelection,
           nextSelection: textView.selectedRange(),
-          mutation: mutation,
-          refreshStartUTF16: refreshStartUTF16
+          mutation: mutation
         )
       }
       prepareSyntaxHighlightRenderingForPendingTextChange(
         mutation: mutation,
-        source: nextText,
-        refreshStartUTF16: refreshStartUTF16
+        source: nextText
       )
       scheduleHighlight(
         source: nextText,
         language: model.language,
         revision: change.textRevision,
-        mutation: mutation,
-        refreshStartUTF16: refreshStartUTF16
+        mutation: mutation
       )
     }
 
     private func clearPendingTextChangeState() {
-      pendingEditStartUTF16 = nil
       pendingUndoSelection = nil
       pendingHighlightEdit = nil
     }
@@ -175,7 +166,6 @@
         return false
       }
 
-      pendingEditStartUTF16 = affectedCharRange.location
       pendingUndoSelection = affectedCharRange
       guard usesSingleReplacement, let replacementString = replacementStrings.first else {
         pendingHighlightEdit = .fullReset
@@ -292,13 +282,11 @@
             (
               EditorCommandEngine.UndoState(
                 edits: SyntaxEditorModel.inverseReplacements(for: result.edits, in: previousText),
-                selectedRange: previousSelection,
-                refreshStartUTF16: 0
+                selectedRange: previousSelection
               ),
               EditorCommandEngine.UndoState(
                 edits: result.edits,
-                selectedRange: result.selectedRange,
-                refreshStartUTF16: result.refreshStartUTF16
+                selectedRange: result.selectedRange
               )
             )
           } else {
@@ -335,15 +323,13 @@
         let mutation = change.flatMap(Self.highlightMutation)
         prepareSyntaxHighlightRenderingForPendingTextChange(
           mutation: mutation,
-          source: nextText,
-          refreshStartUTF16: result.refreshStartUTF16
+          source: nextText
         )
         scheduleHighlight(
           source: nextText,
           language: model.language,
           revision: change?.textRevision ?? model.textRevision,
-          mutation: mutation,
-          refreshStartUTF16: result.refreshStartUTF16
+          mutation: mutation
         )
       } else {
         applyMatchingBracketHighlight()
@@ -364,8 +350,7 @@
       nextText: String,
       previousSelection: NSRange?,
       nextSelection: NSRange,
-      mutation: SyntaxEditorTextChange.Replacement?,
-      refreshStartUTF16: Int
+      mutation: SyntaxEditorTextChange.Replacement?
     ) {
       let edits: [SyntaxEditorTextChange.Replacement]
       let restoreEdits: [SyntaxEditorTextChange.Replacement]
@@ -395,13 +380,11 @@
       registerUndoAction(
         restore: EditorCommandEngine.UndoState(
           edits: restoreEdits,
-          selectedRange: previousSelection ?? NSRange(location: 0, length: 0),
-          refreshStartUTF16: refreshStartUTF16
+          selectedRange: previousSelection ?? NSRange(location: 0, length: 0)
         ),
         counterpart: EditorCommandEngine.UndoState(
           edits: edits,
-          selectedRange: nextSelection,
-          refreshStartUTF16: refreshStartUTF16
+          selectedRange: nextSelection
         )
       )
     }
@@ -435,8 +418,7 @@
       applyCommandResult(
         EditorCommandEngine.Result(
           edits: restore.edits,
-          selectedRange: restore.selectedRange,
-          refreshStartUTF16: restore.refreshStartUTF16
+          selectedRange: restore.selectedRange
         )
       )
       isApplyingUndoRedo = false

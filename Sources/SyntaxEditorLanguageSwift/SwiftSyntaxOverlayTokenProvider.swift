@@ -731,33 +731,6 @@ package enum SwiftSyntaxOverlayTokenProvider {
         return true
     }
 
-    private static func isSwiftSemanticOverlayToken(
-        _ token: SyntaxEditorHighlighting.Token,
-        generatedSystemMacroOverlayRangeKeys: Set<SyntaxOverlayRangeKey>
-    ) -> Bool {
-        guard token.language == .swift || token.language == nil else {
-            return false
-        }
-        switch token.syntaxID {
-        case .identifierType,
-             .identifierTypeSystem,
-             .identifierClass,
-             .identifierClassSystem,
-             .identifierFunction,
-             .identifierFunctionSystem,
-             .identifierMacro,
-             .identifierConstant,
-             .identifierConstantSystem,
-             .identifierVariable,
-             .identifierVariableSystem:
-            return true
-        case .identifierMacroSystem:
-            return generatedSystemMacroOverlayRangeKeys.contains(SyntaxOverlayRangeKey(token.range))
-        default:
-            return false
-        }
-    }
-
     private static func isSwiftIdentifierStartByte(_ byte: UInt8) -> Bool {
         byte == 95
             || (byte >= 65 && byte <= 90)
@@ -828,20 +801,6 @@ private struct SwiftSemanticTokenContext {
         line.trimmingCharacters(in: .whitespacesAndNewlines).hasPrefix("import ")
     }
 
-    var isAttributeContext: Bool {
-        let trimmedLine = line.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard trimmedLine.hasPrefix("@") else {
-            return false
-        }
-        guard before.contains("@") else {
-            return false
-        }
-        return Self.declarationKeywordAfterAttributeRegex.firstMatch(
-            in: before,
-            range: NSRange(location: 0, length: (before as NSString).length)
-        ) == nil
-    }
-
     var isDeclarationContext: Bool {
         Self.declarationPrefixRegex.firstMatch(
             in: before,
@@ -896,10 +855,6 @@ private struct SwiftSemanticTokenContext {
         containsTernaryQuestionAtCurrentNesting
     }
 
-    var isMacroInvocation: Bool {
-        previousNonWhitespace == "#"
-    }
-
     var attributeSigilRange: NSRange? {
         sigilRangeImmediatelyBeforeToken("@")
     }
@@ -940,10 +895,6 @@ private struct SwiftSemanticTokenContext {
         }
 
         return (receiverText as NSString).nativeSubstring(with: match.range)
-    }
-
-    var isSelfMemberAccess: Bool {
-        before.trimmingCharacters(in: .whitespaces).hasSuffix("self.")
     }
 
     var isFunctionCall: Bool {
@@ -1168,10 +1119,6 @@ private struct SwiftSemanticTokenContext {
         pattern: #"\b(?:class|struct|enum|actor|protocol|func)\s+[A-Za-z_][A-Za-z0-9_]*[^\n<]*<[^=\n{}()]*$"#
     )
 
-    private static let declarationKeywordAfterAttributeRegex = try! NSRegularExpression(
-        pattern: #"\b(?:let|var|func|macro|class|struct|enum|actor|protocol|typealias|associatedtype)\b"#
-    )
-
     private static let typeDeclarationAssignmentPrefixRegex = try! NSRegularExpression(
         pattern: #"\b(?:typealias|associatedtype)\b"#
     )
@@ -1272,10 +1219,8 @@ extension SwiftSyntaxOverlayTokenProvider {
         tokens: [SyntaxEditorHighlighting.Token],
         source: String,
         rootNode: Node? = nil,
-        refreshRange: NSRange? = nil,
         state: inout SwiftSemanticOverlayState?
     ) -> SwiftSemanticOverlayResult {
-        _ = refreshRange
         let nsSource = source as NSString
         let baseTokens = tokens.filter { !$0.isSemanticOverlay }
         guard nsSource.length > 0 else {

@@ -1,7 +1,6 @@
 import Foundation
 import SyntaxEditorCoreTypes
 import SyntaxEditorLanguageSupport
-import SyntaxEditorLanguageSupport
 import SyntaxEditorLanguages
 import SwiftTreeSitter
 import SwiftTreeSitterLayer
@@ -77,13 +76,6 @@ package actor SyntaxHighlighterEngine: SyntaxEditorHighlighting.Engine {
             }
         }
         return stream.stream
-    }
-
-    package func cancelCurrentRequest() async {
-        currentRequestGeneration += 1
-        currentRequestTask?.cancel()
-        currentRequestTask = nil
-        await worker.cancelOutstandingWork()
     }
 
     package func setVisibleRange(_ range: NSRange?) async {

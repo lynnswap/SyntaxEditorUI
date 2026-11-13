@@ -38,11 +38,7 @@ extension SyntaxEditorView {
 
         commitTextReplacements(
             [SyntaxEditorTextChange.Replacement(range: clampedRange, replacement: replacement)],
-            selectedRange: nextSelection,
-            refreshStartUTF16: SyntaxEditorRangeUtilities.lineStartUTF16Offset(
-                in: source,
-                around: clampedRange.location
-            )
+            selectedRange: nextSelection
         )
     }
 
@@ -84,14 +80,9 @@ extension SyntaxEditorView {
             firstRange.location + replacement.utf16.count,
             nextTextLength
         )
-        let refreshStartUTF16 = SyntaxEditorRangeUtilities.lineStartUTF16Offset(
-            in: source,
-            around: selectionLocation
-        )
         commitTextReplacements(
             edits,
-            selectedRange: NSRange(location: selectionLocation, length: 0),
-            refreshStartUTF16: refreshStartUTF16
+            selectedRange: NSRange(location: selectionLocation, length: 0)
         )
         return true
     }
@@ -127,8 +118,7 @@ extension SyntaxEditorView {
         scheduleHighlight(
             source: nextText,
             language: model.language,
-            revision: change.textRevision,
-            refreshStartUTF16: 0
+            revision: change.textRevision
         )
         refreshKeyboardAccessoryState()
     }
@@ -136,7 +126,6 @@ extension SyntaxEditorView {
     func commitTextReplacements(
         _ edits: [SyntaxEditorTextChange.Replacement],
         selectedRange nextSelection: NSRange,
-        refreshStartUTF16: Int,
         registersUndo: Bool = true,
         preservesMarkedTextUndoAnchor: Bool = false,
         preservesCommandState: Bool = false,
@@ -165,16 +154,11 @@ extension SyntaxEditorView {
             registerUndoAction(
                 restore: EditorCommandEngine.UndoState(
                     edits: SyntaxEditorModel.inverseReplacements(for: edits, in: previousText),
-                    selectedRange: previousSelection,
-                    refreshStartUTF16: SyntaxEditorRangeUtilities.lineStartUTF16Offset(
-                        in: previousText,
-                        around: refreshStartUTF16
-                    )
+                    selectedRange: previousSelection
                 ),
                 counterpart: EditorCommandEngine.UndoState(
                     edits: edits,
-                    selectedRange: nextSelection,
-                    refreshStartUTF16: refreshStartUTF16
+                    selectedRange: nextSelection
                 )
             )
         }
@@ -216,16 +200,11 @@ extension SyntaxEditorView {
         }
         isApplyingModel = false
 
-        let refreshStart = min(
-            refreshStartUTF16,
-            edits.map(\.range.location).min() ?? refreshStartUTF16
-        )
         scheduleHighlight(
             source: nextText,
             language: model.language,
             revision: change.textRevision,
-            mutation: Self.highlightMutation(change),
-            refreshStartUTF16: refreshStart
+            mutation: Self.highlightMutation(change)
         )
         handleSelectionDidChange(preservesCommandState: preservesCommandState)
 
@@ -279,7 +258,6 @@ extension SyntaxEditorView {
         commitTextReplacements(
             result.edits,
             selectedRange: result.selectedRange,
-            refreshStartUTF16: result.refreshStartUTF16,
             preservesCommandState: true
         )
     }
@@ -318,21 +296,10 @@ extension SyntaxEditorView {
         applyCommandResult(
             EditorCommandEngine.Result(
                 edits: restore.edits,
-                selectedRange: restore.selectedRange,
-                refreshStartUTF16: restore.refreshStartUTF16
+                selectedRange: restore.selectedRange
             )
         )
         isApplyingUndoRedo = false
-    }
-
-    func setTextSelectionPreservingCommandState(_ range: NSRange) {
-        isApplyingCommandSelection = true
-        setSelectedRange(
-            range,
-            preservesCommandState: true,
-            schedulesSelectionScroll: true
-        )
-        isApplyingCommandSelection = false
     }
 
     func setSelectedRange(
@@ -395,27 +362,6 @@ extension SyntaxEditorView {
         }
 
         work()
-    }
-
-    func applyTextReplacement(
-        previousText: String,
-        nextText: String
-    ) -> SyntaxEditorTextChange.Replacement? {
-        guard let mutation = SyntaxEditorTextChange.Replacement.singleReplacement(from: previousText, to: nextText) else {
-            return nil
-        }
-
-        let textLength = previousText.utf16.count
-        guard mutation.range.location >= 0,
-              mutation.range.location + mutation.range.length <= textLength else {
-            return nil
-        }
-
-        performRawEdits(
-            [SyntaxEditorTextChange.Replacement(range: mutation.range, replacement: mutation.replacement)],
-            previousText: previousText
-        )
-        return mutation
     }
 }
 #endif

@@ -388,19 +388,6 @@ package enum SyntaxLanguageTextUtilities {
         return source.substring(with: NSRange(location: offset, length: prefixLength)) == prefix
     }
 
-    package static func previousNonWhitespaceOffset(in source: NSString, before location: Int) -> Int? {
-        var cursor = location - 1
-        while cursor >= 0 {
-            let codeUnit = source.character(at: cursor)
-            if codeUnit == 32 || codeUnit == 9 || codeUnit == 10 || codeUnit == 13 {
-                cursor -= 1
-                continue
-            }
-            return cursor
-        }
-        return nil
-    }
-
     package static func previousNonWhitespaceCodeUnit(in source: NSString, before location: Int) -> unichar? {
         var cursor = location - 1
         while cursor >= 0 {
