@@ -7,8 +7,6 @@ import TreeSitterAsm
 package struct AssemblyARMLanguage: SyntaxLanguageSupport {
     package init() {}
 
-    package var language: SyntaxLanguage { .assemblyARM }
-    package var displayName: String { "Assembly (ARM)" }
     package var treeSitterSupport: SyntaxLanguageTreeSitterSupport? {
         SyntaxLanguageTreeSitterSupport(
             name: "AssemblyARM",

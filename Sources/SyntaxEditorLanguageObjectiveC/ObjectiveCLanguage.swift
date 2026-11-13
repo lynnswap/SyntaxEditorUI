@@ -7,9 +7,6 @@ import TreeSitterObjc
 package struct ObjectiveCLanguage: SyntaxLanguageSupport {
     package init() {}
 
-    package var language: SyntaxLanguage { .objectiveC }
-    package var displayName: String { "Objective-C" }
-    package var aliases: Set<String> { ["objective-c", "objectivec", "objc"] }
     package var treeSitterSupport: SyntaxLanguageTreeSitterSupport? {
         SyntaxLanguageTreeSitterSupport(
             name: "Objective-C",

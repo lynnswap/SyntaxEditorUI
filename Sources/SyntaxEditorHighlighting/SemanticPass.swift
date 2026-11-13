@@ -137,7 +137,6 @@ final class SwiftSemanticPass: SemanticPass {
             tokens: tokens,
             source: source,
             rootNode: rootNode,
-            refreshRange: nil,
             state: &state
         )
         return (result.tokens, result.isCancelled)
@@ -250,7 +249,6 @@ final class ObjectiveCSemanticPass: SemanticPass {
             tokens: tokens,
             source: source,
             rootNode: rootNode,
-            refreshRange: nil,
             state: &state
         )
         return (result.tokens, result.isCancelled)

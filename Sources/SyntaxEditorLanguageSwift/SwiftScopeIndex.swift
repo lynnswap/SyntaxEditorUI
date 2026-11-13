@@ -45,9 +45,6 @@ package final class SwiftScopeIndex {
         static let constant = Self(rawValue: 1 << 3)
         static let macro = Self(rawValue: 1 << 4)
 
-        static let macroOrType: Self = [.macro, .type]
-        static let memberAccessKinds: Self = [.function, .type, .variable]
-
         func contains(_ kind: SymbolKind) -> Bool {
             rawValue & Self.bit(for: kind) != 0
         }
@@ -71,7 +68,6 @@ package final class SwiftScopeIndex {
         static let local = Self(rawValue: 1 << 2)
         static let genericParameter = Self(rawValue: 1 << 3)
         static let any: Self = [.file, .member, .local, .genericParameter]
-        static let fileOrMember: Self = [.file, .member]
 
         func contains(_ role: SymbolRole) -> Bool {
             rawValue & Self.bit(for: role) != 0
@@ -1523,12 +1519,6 @@ package final class SwiftScopeIndex {
                 }
             }
             return nil
-        }
-
-        private func isFieldName(_ child: Node, of node: Node, fieldName: String) -> Bool {
-            // tree-sitter-swift names enum case identifiers via the "name" field;
-            // fall back to accepting the identifier when field metadata is absent.
-            node.child(byFieldName: fieldName).map { $0.range == child.range } ?? true
         }
     }
 }

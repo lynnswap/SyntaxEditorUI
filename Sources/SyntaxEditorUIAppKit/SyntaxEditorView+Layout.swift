@@ -96,10 +96,6 @@
       ]
     }
 
-    func storageBaseAttributes() -> [NSAttributedString.Key: Any] {
-      baseAttributes()
-    }
-
     func resolvedBaseFont(for theme: SyntaxEditorTheme.Resolved? = nil) -> NSFont {
       resolvedBaseFont(for: theme, fontSizeDelta: model.fontSizeDelta)
     }
@@ -339,12 +335,6 @@
         || match == .accessibilityHighContrastVibrantDark
         ? .dark
         : .light
-    }
-  }
-
-  extension NSFont {
-    fileprivate func syntaxEditorFontSizeAdjusted(by delta: Int) -> NSFont {
-      withSize(SyntaxEditorTheme.FontSize.pointSize(pointSize, applying: delta))
     }
   }
 

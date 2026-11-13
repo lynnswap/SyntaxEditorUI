@@ -7,24 +7,14 @@ package final class EditorCommandEngine {
     package struct Result {
         package let edits: [SyntaxEditorTextChange.Replacement]
         package let selectedRange: NSRange
-        package let refreshStartUTF16: Int
 
-        package init(
-            edits: [SyntaxEditorTextChange.Replacement],
-            selectedRange: NSRange,
-            refreshStartUTF16: Int
-        ) {
+        package init(edits: [SyntaxEditorTextChange.Replacement], selectedRange: NSRange) {
             self.edits = edits
             self.selectedRange = selectedRange
-            self.refreshStartUTF16 = refreshStartUTF16
         }
 
-        package init(
-            edit: SyntaxEditorTextChange.Replacement,
-            selectedRange: NSRange,
-            refreshStartUTF16: Int
-        ) {
-            self.init(edits: [edit], selectedRange: selectedRange, refreshStartUTF16: refreshStartUTF16)
+        package init(edit: SyntaxEditorTextChange.Replacement, selectedRange: NSRange) {
+            self.init(edits: [edit], selectedRange: selectedRange)
         }
     }
 
@@ -125,8 +115,7 @@ package final class EditorCommandEngine {
 
         return EditorCommandEngine.Result(
             edit: SyntaxEditorTextChange.Replacement(range: safeSelection, replacement: replacement),
-            selectedRange: NSRange(location: safeSelection.location + replacement.utf16.count, length: 0),
-            refreshStartUTF16: lineRange.location
+            selectedRange: NSRange(location: safeSelection.location + replacement.utf16.count, length: 0)
         )
     }
 
@@ -150,10 +139,7 @@ package final class EditorCommandEngine {
             SyntaxLanguageTextEdit(range: NSRange(location: $0, length: 0), replacement: indentUnit)
         }
 
-        return wrap(
-            SyntaxLanguageTextUtilities.applyEdits(edits, source: source, selection: safeSelection),
-            refreshStartUTF16: lineStarts[0]
-        )
+        return wrap(SyntaxLanguageTextUtilities.applyEdits(edits, source: source, selection: safeSelection))
     }
 
     package func outdentSelection(
@@ -187,10 +173,7 @@ package final class EditorCommandEngine {
         }
 
         guard !edits.isEmpty else { return nil }
-        return wrap(
-            SyntaxLanguageTextUtilities.applyEdits(edits, source: source, selection: safeSelection),
-            refreshStartUTF16: lineStarts[0]
-        )
+        return wrap(SyntaxLanguageTextUtilities.applyEdits(edits, source: source, selection: safeSelection))
     }
 
     package func toggleComment(
@@ -203,21 +186,13 @@ package final class EditorCommandEngine {
         let nsSource = source as NSString
         let safeSelection = SyntaxEditorRangeUtilities.clampedRange(selection, utf16Length: nsSource.length)
         guard let edit = language.toggleComment(source: source, selection: safeSelection) else { return nil }
-        let refreshStartUTF16 = SyntaxEditorRangeUtilities.lineStartUTF16Offset(
-            in: source,
-            around: safeSelection.location
-        )
-        return wrap(edit, refreshStartUTF16: refreshStartUTF16)
+        return wrap(edit)
     }
 }
 
 private extension EditorCommandEngine {
-    func wrap(_ edit: SyntaxLanguage.EditResult, refreshStartUTF16: Int) -> EditorCommandEngine.Result {
-        EditorCommandEngine.Result(
-            edits: edit.edits,
-            selectedRange: edit.selectedRange,
-            refreshStartUTF16: max(0, refreshStartUTF16)
-        )
+    func wrap(_ edit: SyntaxLanguage.EditResult) -> EditorCommandEngine.Result {
+        EditorCommandEngine.Result(edits: edit.edits, selectedRange: edit.selectedRange)
     }
 
     func autoPair(
@@ -252,8 +227,7 @@ private extension EditorCommandEngine {
             pendingTOMLMultilineDelimiter = nil
             return EditorCommandEngine.Result(
                 edit: SyntaxEditorTextChange.Replacement(range: range, replacement: String(input)),
-                selectedRange: NSRange(location: range.location + 1, length: 0),
-                refreshStartUTF16: SyntaxEditorRangeUtilities.lineStartUTF16Offset(in: source, around: range.location)
+                selectedRange: NSRange(location: range.location + 1, length: 0)
             )
         }
 
@@ -278,8 +252,7 @@ private extension EditorCommandEngine {
 
             return EditorCommandEngine.Result(
                 edits: [],
-                selectedRange: NSRange(location: range.location + 1, length: 0),
-                refreshStartUTF16: SyntaxEditorRangeUtilities.lineStartUTF16Offset(in: source, around: range.location)
+                selectedRange: NSRange(location: range.location + 1, length: 0)
             )
         }
 
@@ -296,16 +269,14 @@ private extension EditorCommandEngine {
                 let cursor = range.location + wrapped.utf16.count
                 return EditorCommandEngine.Result(
                     edit: SyntaxEditorTextChange.Replacement(range: range, replacement: wrapped),
-                    selectedRange: NSRange(location: cursor, length: 0),
-                    refreshStartUTF16: SyntaxEditorRangeUtilities.lineStartUTF16Offset(in: source, around: range.location)
+                    selectedRange: NSRange(location: cursor, length: 0)
                 )
             }
 
             let inserted = String(input) + String(open)
             return EditorCommandEngine.Result(
                 edit: SyntaxEditorTextChange.Replacement(range: range, replacement: inserted),
-                selectedRange: NSRange(location: range.location + 1, length: 0),
-                refreshStartUTF16: SyntaxEditorRangeUtilities.lineStartUTF16Offset(in: source, around: range.location)
+                selectedRange: NSRange(location: range.location + 1, length: 0)
             )
         }
 
@@ -313,8 +284,7 @@ private extension EditorCommandEngine {
             if let next = SyntaxLanguageTextUtilities.character(in: nsSource, at: range.location), next == input {
                 return EditorCommandEngine.Result(
                     edits: [],
-                    selectedRange: NSRange(location: range.location + 1, length: 0),
-                    refreshStartUTF16: SyntaxEditorRangeUtilities.lineStartUTF16Offset(in: source, around: range.location)
+                    selectedRange: NSRange(location: range.location + 1, length: 0)
                 )
             }
 
@@ -324,8 +294,7 @@ private extension EditorCommandEngine {
                 {
                     return EditorCommandEngine.Result(
                         edits: [],
-                        selectedRange: NSRange(location: nextNonWhitespace + 1, length: 0),
-                        refreshStartUTF16: SyntaxEditorRangeUtilities.lineStartUTF16Offset(in: source, around: range.location)
+                        selectedRange: NSRange(location: nextNonWhitespace + 1, length: 0)
                     )
                 }
 
@@ -366,8 +335,7 @@ private extension EditorCommandEngine {
         let removeRange = NSRange(location: deleteOffset, length: 2)
         return EditorCommandEngine.Result(
             edit: SyntaxEditorTextChange.Replacement(range: removeRange, replacement: ""),
-            selectedRange: NSRange(location: deleteOffset, length: 0),
-            refreshStartUTF16: SyntaxEditorRangeUtilities.lineStartUTF16Offset(in: source, around: deleteOffset)
+            selectedRange: NSRange(location: deleteOffset, length: 0)
         )
     }
 
@@ -402,8 +370,7 @@ private extension EditorCommandEngine {
 
         return EditorCommandEngine.Result(
             edit: SyntaxEditorTextChange.Replacement(range: range, replacement: insertion),
-            selectedRange: NSRange(location: range.location + cursorOffset, length: 0),
-            refreshStartUTF16: SyntaxEditorRangeUtilities.lineStartUTF16Offset(in: source, around: range.location)
+            selectedRange: NSRange(location: range.location + cursorOffset, length: 0)
         )
     }
 
@@ -430,8 +397,7 @@ private extension EditorCommandEngine {
 
         return EditorCommandEngine.Result(
             edit: SyntaxEditorTextChange.Replacement(range: prefixRange, replacement: replacement),
-            selectedRange: NSRange(location: cursor, length: 0),
-            refreshStartUTF16: lineRange.location
+            selectedRange: NSRange(location: cursor, length: 0)
         )
     }
 

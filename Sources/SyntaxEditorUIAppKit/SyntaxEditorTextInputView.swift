@@ -33,7 +33,6 @@ final class SyntaxEditorTextInputView: NSView, @preconcurrency NSTextInputClient
     var typingAttributes: [NSAttributedString.Key: Any] = [:]
     var isEditable = true
     var isSelectable = true
-    var allowsUndo = true
     var usesFindBar = false {
         didSet {
             guard usesFindBar != oldValue else { return }

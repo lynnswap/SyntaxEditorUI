@@ -14,10 +14,4 @@ package enum SyntaxEditorRangeUtilities {
         let length = max(0, end - start)
         return NSRange(location: start, length: length)
     }
-
-    package static func lineStartUTF16Offset(in source: String, around offset: Int) -> Int {
-        let nsString = source as NSString
-        let clampedOffset = min(max(0, offset), nsString.length)
-        return nsString.lineRange(for: NSRange(location: clampedOffset, length: 0)).location
-    }
 }

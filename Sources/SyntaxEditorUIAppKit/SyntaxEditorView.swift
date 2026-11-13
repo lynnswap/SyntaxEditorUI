@@ -85,7 +85,6 @@
     var isApplyingModel = false
     var isApplyingHighlight = false
     var lastAppliedLanguageIdentifier: String?
-    var pendingEditStartUTF16: Int?
     var pendingUndoSelection: NSRange?
     var pendingHighlightEdit: PendingHighlightEdit?
     var pendingHighlightApplication: PendingHighlightApplication?
@@ -248,7 +247,7 @@
       lastAppliedThemeAppearance = nextAppearance
 
       updateEditorBackgroundColor()
-      applyBaseForegroundColorChange(from: lastAppliedTheme, to: theme)
+      applyBaseForegroundColorChange(to: theme)
       updateTextViewFontAndTypingAttributes()
       if baseFontChanged || hasCachedSyntaxFontRunChanges {
         applyResolvedFontsToExistingText()

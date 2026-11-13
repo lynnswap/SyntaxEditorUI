@@ -94,10 +94,6 @@ package struct Result: Sendable {
     package let phase: SyntaxEditorHighlighting.Result.Phase
     package let tokenPayload: SyntaxEditorHighlighting.Result.Payload
 
-    package var containsCompleteTokenSnapshot: Bool {
-        tokenPayload == .fullSnapshot
-    }
-
     package init(
         tokens: [SyntaxEditorHighlighting.Token],
         source: String,
@@ -222,13 +218,11 @@ package protocol Engine: Sendable {
     /// and convergence are identical without it.
     func setVisibleRange(_ range: NSRange?) async
     func replaceCurrentRequest(with request: SyntaxEditorHighlighting.Request) async -> AsyncStream<SyntaxEditorHighlighting.Result>
-    func cancelCurrentRequest() async
 }
 }
 
 package extension SyntaxEditorHighlighting.Engine {
     func setVisibleRange(_ range: NSRange?) async {}
-    func cancelCurrentRequest() async {}
 
     func replaceCurrentRequest(with request: SyntaxEditorHighlighting.Request) async -> AsyncStream<SyntaxEditorHighlighting.Result> {
         await setVisibleRange(request.visibleRange)

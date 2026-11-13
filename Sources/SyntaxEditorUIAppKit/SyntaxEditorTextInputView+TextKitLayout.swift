@@ -346,16 +346,6 @@ extension SyntaxEditorTextInputView {
         return fragment
     }
 
-    func setNeedsDisplayForContentRect(_ rect: NSRect) {
-        guard !rect.isEmpty else { return }
-
-        for case let fragmentView as SyntaxEditorTextInputView.TextLayoutFragmentView in textContentView.subviews {
-            guard fragmentView.frame.intersects(rect) else { continue }
-            fragmentView.setNeedsDisplay(rect.offsetBy(dx: -fragmentView.frame.minX, dy: -fragmentView.frame.minY))
-            fragmentDisplayInvalidationCount += 1
-        }
-    }
-
     func viewportBounds(for textViewportLayoutController: NSTextViewportLayoutController) -> CGRect {
         currentViewportBounds
     }

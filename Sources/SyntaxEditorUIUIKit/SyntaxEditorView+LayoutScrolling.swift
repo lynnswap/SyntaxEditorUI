@@ -443,13 +443,6 @@ extension SyntaxEditorView {
         }
     }
 
-    func invalidateTextFragmentViews(intersecting rect: CGRect) {
-        for case let fragmentView as SyntaxEditorView.TextLayoutFragmentView in textContentView.subviews {
-            guard fragmentView.frame.intersects(rect) else { continue }
-            fragmentView.setNeedsDisplay(rect.offsetBy(dx: -fragmentView.frame.minX, dy: -fragmentView.frame.minY))
-        }
-    }
-
     func resetHorizontalContentOffset() {
         let targetX = -adjustedContentInset.left
         guard !contentOffset.x.isNearlyEqual(to: targetX) else { return }

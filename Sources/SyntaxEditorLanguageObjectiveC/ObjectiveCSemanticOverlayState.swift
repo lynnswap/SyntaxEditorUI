@@ -191,7 +191,6 @@ struct ObjectiveCSemanticLineSignatureIndex {
         var hasher = Hasher()
         let contributes = ObjectiveCSyntaxOverlayTokenProvider.appendObjectiveCSemanticIndexSignature(
             from: line,
-            lineOffset: lineRange.location,
             into: &hasher
         )
         let structuralEditRanges = contributes

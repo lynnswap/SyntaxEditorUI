@@ -137,8 +137,7 @@ extension SyntaxEditorView {
                 source: nextText,
                 language: model.language,
                 revision: revision,
-                mutation: highlightMutation,
-                refreshStartUTF16: 0
+                mutation: highlightMutation
             )
         } else {
             updateTypingAttributes()
@@ -193,7 +192,7 @@ extension SyntaxEditorView {
             invalidateHorizontalMeasurement()
         }
         if themeChanged {
-            applyBaseForegroundColorChange(from: previousTheme, to: theme, language: language)
+            applyBaseForegroundColorChange(to: theme, language: language)
         }
         lastAppliedTheme = theme
         lastAppliedThemeAppearance = appearance
@@ -223,8 +222,7 @@ extension SyntaxEditorView {
             scheduleHighlight(
                 source: storage.string,
                 language: language,
-                revision: lastAppliedDocumentRevision,
-                refreshStartUTF16: 0
+                revision: lastAppliedDocumentRevision
             )
         } else if (themeChanged || fontSizeDeltaChanged) && schedulesHighlight {
             reapplyCachedHighlight(
@@ -240,7 +238,7 @@ extension SyntaxEditorView {
     func replaceEntireStorageText(_ nextText: String) {
         lineMetrics.reset(source: nextText)
         TextEditingTransaction.perform(on: textContentStorage) { storage in
-            storage.setAttributedString(NSAttributedString(string: nextText, attributes: storageBaseAttributes()))
+            storage.setAttributedString(NSAttributedString(string: nextText, attributes: baseAttributes()))
         }
         resetSyntaxHighlightRenderingState(textLength: nextText.utf16.count)
         invalidateFindResultsAfterTextChange()

@@ -3,26 +3,12 @@ import SwiftTreeSitter
 import SyntaxEditorCoreTypes
 
 package protocol SyntaxLanguageSupport: Sendable {
-    var language: SyntaxLanguage { get }
-    var displayName: String { get }
-    var aliases: Set<String> { get }
     var treeSitterSupport: SyntaxLanguageTreeSitterSupport? { get }
-    var supportsCodeEditingCommands: Bool { get }
 
     init()
 
     func toggleComment(source: String, selection: NSRange) -> SyntaxLanguage.EditResult?
     func isInsideLiteralOrComment(source: String, location: Int) -> Bool
-}
-
-extension SyntaxLanguageSupport {
-    package var aliases: Set<String> {
-        [language.identifier]
-    }
-
-    package var supportsCodeEditingCommands: Bool {
-        true
-    }
 }
 
 package struct SyntaxLanguageTreeSitterSupport: Sendable {

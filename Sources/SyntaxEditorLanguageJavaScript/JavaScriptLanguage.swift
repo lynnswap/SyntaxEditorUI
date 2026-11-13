@@ -7,9 +7,6 @@ import TreeSitterJavaScript
 package struct JavaScriptLanguage: SyntaxLanguageSupport {
     package init() {}
 
-    package var language: SyntaxLanguage { .javascript }
-    package var displayName: String { "JavaScript" }
-    package var aliases: Set<String> { ["javascript", "js"] }
     package var treeSitterSupport: SyntaxLanguageTreeSitterSupport? {
         SyntaxLanguageTreeSitterSupport(
             name: "JavaScript",

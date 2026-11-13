@@ -1048,17 +1048,6 @@ extension SyntaxEditorUITests {
         #expect(editorView.textView.string == twiceIndentedSource)
     }
 
-    @Test("SyntaxEditorViewController enables undo support on macOS")
-    @MainActor
-    func syntaxEditorViewControllerMacUndo() {
-        let model = SyntaxEditorTestContext(text: "{}", language: SyntaxLanguage.javascript)
-        let controller = SyntaxEditorViewController(testContext: model)
-        controller.loadViewIfNeeded()
-
-        let textView = controller.textView
-        #expect(textView.allowsUndo == true)
-    }
-
     @Test("SyntaxEditorViewController renders source-of-truth state on macOS")
     @MainActor
     func syntaxEditorViewControllerMacRendersSourceOfTruthState() async {

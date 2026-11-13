@@ -254,7 +254,7 @@ extension SyntaxEditorView {
 
         updateEditorBackgroundColor()
         invalidateHorizontalMeasurement()
-        applyBaseForegroundColorChange(from: theme, to: theme)
+        applyBaseForegroundColorChange(to: theme)
         updateTypingAttributes()
         if baseFontChanged {
             applyResolvedFontsToExistingText()
@@ -269,7 +269,7 @@ extension SyntaxEditorView {
         if let baseForeground = baseAttributes()[.foregroundColor] as? UIColor {
             highlightStyleStore.updateBaseForeground(baseForeground, textLength: storage.length)
         }
-        typingAttributes = storageBaseAttributes()
+        typingAttributes = baseAttributes()
     }
     func applyResolvedFontsToExistingText(
         source: String? = nil,
@@ -327,7 +327,6 @@ extension SyntaxEditorView {
     }
 
     func applyBaseForegroundColorChange(
-        from _: SyntaxEditorTheme,
         to theme: SyntaxEditorTheme,
         language: SyntaxLanguage? = nil
     ) {
@@ -443,14 +442,6 @@ extension SyntaxEditorView {
         resumeSkippedHighlightPhaseWaitersForTesting(revision: revision, result: false)
     }
 
-    private func resumeAppliedHighlightPhaseWaiterForTesting(id: Int, result: Bool) {
-        guard let waiterIndex = appliedHighlightPhaseWaitersForTesting.firstIndex(where: { $0.id == id }) else {
-            return
-        }
-        let waiter = appliedHighlightPhaseWaitersForTesting.remove(at: waiterIndex)
-        waiter.continuation.resume(returning: result)
-    }
-
     private func resumeAppliedHighlightPhaseWaitersForTesting(
         revision: Int? = nil,
         phase: SyntaxEditorHighlighting.Result.Phase? = nil,
@@ -470,15 +461,6 @@ extension SyntaxEditorView {
         for waiter in matchedWaiters {
             waiter.continuation.resume(returning: result)
         }
-    }
-
-    private func resumeSkippedHighlightPhaseWaiterForTesting(id: Int, result: Bool) {
-        guard let waiterIndex = skippedHighlightPhaseWaitersForTesting.firstIndex(where: { $0.id == id }) else {
-            return
-        }
-
-        let waiter = skippedHighlightPhaseWaitersForTesting.remove(at: waiterIndex)
-        waiter.continuation.resume(returning: result)
     }
 
     private func resumeSkippedHighlightPhaseWaitersForTesting(
@@ -506,8 +488,7 @@ extension SyntaxEditorView {
         source: String,
         language: SyntaxLanguage,
         revision: Int,
-        mutation: SyntaxEditorTextChange.Replacement? = nil,
-        refreshStartUTF16: Int = 0
+        mutation: SyntaxEditorTextChange.Replacement? = nil
     ) {
         highlightTask?.cancel()
         let requestID = nextScheduledHighlightRequestID
@@ -522,8 +503,7 @@ extension SyntaxEditorView {
         resetAppliedHighlightPhaseTrackingForTesting()
         prepareSyntaxHighlightRenderingForPendingHighlight(
             mutation: mutation,
-            source: source,
-            refreshStartUTF16: refreshStartUTF16
+            source: source
         )
 
         let highlighter = self.highlighter
@@ -597,18 +577,12 @@ extension SyntaxEditorView {
             recordSkippedHighlightPhaseForTesting(result.phase, revision: result.revision)
             return
         }
-        let refreshRanges = highlightApplicationRefreshRanges(
-            for: result,
-            mutation: mutation
-        )
         let didApplyHighlight = await applyHighlightFromScheduledTask(
             result.tokens,
             expectedRevision: result.revision,
             source: result.source,
             language: result.language,
-            refreshRanges: refreshRanges,
-            mutation: mutation,
-            tokenPayload: result.tokenPayload
+            refreshRanges: result.refreshRanges
         )
         guard didApplyHighlight else { return }
         recordMaterializedHighlight(
@@ -649,14 +623,6 @@ extension SyntaxEditorView {
         }
 
         return materializedHighlightRevision < result.revision
-    }
-
-    func highlightApplicationRefreshRanges(
-        for result: SyntaxEditorHighlighting.Result,
-        mutation: SyntaxEditorTextChange.Replacement?
-    ) -> [NSRange] {
-        _ = mutation
-        return result.refreshRanges
     }
 
     private static func highlightTargetRanges(_ ranges: [NSRange], textLength: Int) -> [NSRange] {
@@ -841,9 +807,7 @@ extension SyntaxEditorView {
         expectedRevision: Int,
         source expectedSource: String,
         language expectedLanguage: SyntaxLanguage,
-        refreshRanges: [NSRange],
-        mutation: SyntaxEditorTextChange.Replacement?,
-        tokenPayload _: SyntaxEditorHighlighting.Result.Payload = .fullSnapshot
+        refreshRanges: [NSRange]
     ) async -> Bool {
         guard model.textRevision == expectedRevision else { return false }
         guard model.language == expectedLanguage,
@@ -979,8 +943,7 @@ extension SyntaxEditorView {
 
     private func prepareSyntaxHighlightRenderingForPendingHighlight(
         mutation: SyntaxEditorTextChange.Replacement?,
-        source: String,
-        refreshStartUTF16 _: Int
+        source: String
     ) {
         let textLength = source.utf16.count
         guard let mutation else {
@@ -1073,7 +1036,7 @@ extension SyntaxEditorView {
             )
         } else {
             TextEditingTransaction.perform(on: textContentStorage) { storage in
-                storage.addAttributes(storageBaseAttributes(), range: targetRange)
+                storage.addAttributes(baseAttributes(), range: targetRange)
             }
             setNeedsDisplayForVisibleTextFragments()
         }
@@ -1129,10 +1092,6 @@ extension SyntaxEditorView {
             .foregroundColor: resolvedSyntaxColor(theme.baseForeground),
             .paragraphStyle: baseParagraphStyle(),
         ]
-    }
-
-    func storageBaseAttributes() -> [NSAttributedString.Key: Any] {
-        baseAttributes()
     }
 
     func resolvedBaseFont(for theme: SyntaxEditorTheme.Resolved? = nil) -> UIFont {
@@ -1203,12 +1162,6 @@ extension SyntaxEditorView {
         isOpaque = drawsBackground && color.cgColor.alpha >= 1
         backgroundColor = color
         textContentView.backgroundColor = backgroundColor
-    }
-}
-
-private extension UIFont {
-    func syntaxEditorFontSizeAdjusted(by delta: Int) -> UIFont {
-        withSize(SyntaxEditorTheme.FontSize.pointSize(pointSize, applying: delta))
     }
 }
 #endif

@@ -9,9 +9,6 @@ import TreeSitterHTML
 package struct HTMLLanguage: SyntaxLanguageSupport {
     package init() {}
 
-    package var language: SyntaxLanguage { .html }
-    package var displayName: String { "HTML" }
-    package var aliases: Set<String> { ["html", "htm"] }
     package var treeSitterSupport: SyntaxLanguageTreeSitterSupport? {
         SyntaxLanguageTreeSitterSupport(
             name: "HTML",
@@ -1923,10 +1920,6 @@ extension HTMLLanguage {
         }
 
         return mutableSource as String
-    }
-
-    package static func embeddedCSSRawTextRanges(in source: String) -> [NSRange] {
-        rawTextContentRegions(in: source).css
     }
 
     /// All raw-text content ranges in document order, with the CSS subset the
