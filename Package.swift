@@ -9,7 +9,12 @@ let xcodeContentsPath: String = {
     let developerDirectory = Context.environment["DEVELOPER_DIR"].flatMap { $0.isEmpty ? nil : $0 }
         ?? (try? FileManager.default.destinationOfSymbolicLink(atPath: "/var/db/xcode_select_link"))
         ?? "/Applications/Xcode.app/Contents/Developer"
-    return URL(fileURLWithPath: developerDirectory).deletingLastPathComponent().path
+    let url = URL(fileURLWithPath: developerDirectory)
+    // `DEVELOPER_DIR` may name the app bundle instead of its `Contents/Developer`.
+    let contents = url.pathExtension == "app"
+        ? url.appendingPathComponent("Contents")
+        : url.deletingLastPathComponent()
+    return contents.path
 }()
 
 /// Holds the private frameworks `EditorSpecTool` links against.
