@@ -2255,9 +2255,9 @@ extension SyntaxEditorUITests {
 
         await editorView.waitForPendingHighlightForTesting()
         editorView.textView.setSelectedRange(NSRange(location: 0, length: 0))
-        editorView.setApplyingHighlightForTesting(true)
+        editorView.isApplyingHighlight = true
         editorView.textView.insertText(pastedText, replacementRange: NSRange(location: 0, length: 0))
-        editorView.setApplyingHighlightForTesting(false)
+        editorView.isApplyingHighlight = false
         await editorView.waitForPendingHighlightForTesting()
 
         #expect(editorView.textView.string == pastedText + source)

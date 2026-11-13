@@ -3,176 +3,18 @@ import SyntaxEditorCore
 import SyntaxEditorUICommon
 import UIKit
 
-private struct SyntaxHighlightAttributeKey: Hashable {
-    let syntaxID: EditorSourceSyntax.ID
-    let language: SyntaxLanguage
-}
-
-private struct SyntaxHighlightStyle {
-    let foregroundColor: UIColor
-    let font: UIFont
-}
-
-struct ScheduledHighlightRequest {
-    let id: Int
-    let model: SyntaxEditorModel
-    let language: SyntaxLanguage
-    let revision: Int
-    let mutation: SyntaxEditorTextChange.Replacement?
-}
-
-struct HighlightPhaseRecord: Equatable {
-    let revision: Int
-    let phase: SyntaxEditorHighlighting.Result.Phase
-}
-
-struct HighlightPhaseWaiter {
-    let id: Int
-    let revision: Int
-    let phase: SyntaxEditorHighlighting.Result.Phase
-    let continuation: CheckedContinuation<Bool, Never>
-}
-
-private struct SyntaxHighlightAttributeResolver {
-    let theme: SyntaxEditorTheme
-    let defaultLanguage: SyntaxLanguage
-    let appearance: SyntaxEditorTheme.Appearance
-    let fontSizeDelta: Int
-    let resolveColor: (UIColor) -> UIColor
-
-    private var styleCache: [SyntaxHighlightAttributeKey: SyntaxHighlightStyle] = [:]
-    private var missingAttributeKeys: Set<SyntaxHighlightAttributeKey> = []
-    private var fontCache: [SyntaxEditorTheme.FontDescriptor: UIFont] = [:]
-
-    init(
-        theme: SyntaxEditorTheme,
-        defaultLanguage: SyntaxLanguage,
-        appearance: SyntaxEditorTheme.Appearance,
-        fontSizeDelta: Int,
-        resolveColor: @escaping (UIColor) -> UIColor
-    ) {
-        self.theme = theme
-        self.defaultLanguage = defaultLanguage
-        self.appearance = appearance
-        self.fontSizeDelta = fontSizeDelta
-        self.resolveColor = resolveColor
-    }
-
-    mutating func style(
-        for syntaxID: EditorSourceSyntax.ID,
-        language: SyntaxLanguage?
-    ) -> (key: SyntaxHighlightAttributeKey, style: SyntaxHighlightStyle)? {
-        let effectiveLanguage = language ?? defaultLanguage
-        let key = SyntaxHighlightAttributeKey(syntaxID: syntaxID, language: effectiveLanguage)
-
-        if let cached = styleCache[key] {
-            return (key, cached)
-        }
-        guard !missingAttributeKeys.contains(key) else {
-            return nil
-        }
-
-        guard let style = SyntaxEditorHighlightTheme.style(
-            for: syntaxID,
-            in: theme,
-            language: effectiveLanguage,
-            appearance: appearance
-        ) else {
-            missingAttributeKeys.insert(key)
-            return nil
-        }
-
-        let resolvedStyle = SyntaxHighlightStyle(
-            foregroundColor: resolveColor(style.foreground),
-            font: platformFont(for: style.font)
-        )
-        styleCache[key] = resolvedStyle
-        return (key, resolvedStyle)
-    }
-
-    private mutating func platformFont(for descriptor: SyntaxEditorTheme.FontDescriptor) -> UIFont {
-        if let cached = fontCache[descriptor] {
-            return cached
-        }
-        let font = descriptor.platformFont(fontSizeDelta: fontSizeDelta)
-        fontCache[descriptor] = font
-        return font
-    }
-}
-
 @MainActor
-extension SyntaxEditorView {
-    @discardableResult
-    internal func waitForPendingHighlightForTesting() async -> Bool {
-        // Deterministic: a result that cannot apply yet (payload gating,
-        // revision races) reschedules and lets its task complete unapplied, so
-        // follow reschedules by generation until a waited task finishes
-        // without scheduling a successor. No wall-clock is involved — a
-        // pipeline that never settles is a real bug and surfaces as the
-        // suite's time limit, never as a racy early false.
-        while true {
-            guard let task = highlightTask else { return true }
-            let generation = nextScheduledHighlightRequestID
-            await task.value
-            if nextScheduledHighlightRequestID == generation {
-                return true
-            }
-        }
+extension SyntaxEditorView: HighlightRequestCoordinatorClient {
+    package var highlightTextRevision: Int {
+        model.textRevision
     }
 
-    internal func waitForAppliedHighlightPhaseForTesting(
-        _ phase: SyntaxEditorHighlighting.Result.Phase
-    ) async -> Bool {
-        let expectedRevision = model.textRevision
-        guard !hasAppliedHighlightPhaseForTesting(phase, revision: expectedRevision) else {
-            return true
-        }
-        guard !hasSkippedHighlightPhaseForTesting(phase, revision: expectedRevision),
-              hasPendingHighlightForTesting(revision: expectedRevision)
-        else {
-            return false
-        }
-
-        let waiterID = nextHighlightPhaseWaiterID
-        nextHighlightPhaseWaiterID += 1
-        return await withCheckedContinuation { continuation in
-            appliedHighlightPhaseWaitersForTesting.append(
-                HighlightPhaseWaiter(
-                    id: waiterID,
-                    revision: expectedRevision,
-                    phase: phase,
-                    continuation: continuation
-                )
-            )
-        }
+    package var hasRenderedHighlightRuns: Bool {
+        highlightStyleStore.hasMaterializedRuns
     }
 
-    internal func waitForSkippedHighlightPhaseForTesting(
-        _ phase: SyntaxEditorHighlighting.Result.Phase
-    ) async -> Bool {
-        let expectedRevision = model.textRevision
-        guard !hasSkippedHighlightPhaseForTesting(phase, revision: expectedRevision) else {
-            return true
-        }
-        guard !hasAppliedHighlightPhaseForTesting(phase, revision: expectedRevision),
-              !(phase != .complete && hasAppliedHighlightPhaseForTesting(.complete, revision: expectedRevision)),
-              hasPendingHighlightForTesting(revision: expectedRevision)
-        else {
-            return false
-        }
-
-        let waiterID = nextHighlightPhaseWaiterID
-        nextHighlightPhaseWaiterID += 1
-        return await withCheckedContinuation { continuation in
-            skippedHighlightPhaseWaitersForTesting.append(
-                HighlightPhaseWaiter(
-                    id: waiterID,
-                    revision: expectedRevision,
-                    phase: phase,
-                    continuation: continuation
-                )
-            )
-        }
+    package func scheduleFullHighlight(source: String, language: SyntaxLanguage, revision: Int) {
+        scheduleHighlight(source: source, language: language, revision: revision)
     }
 
     func configureSyntaxRenderingAttributesValidator() {
@@ -285,15 +127,15 @@ extension SyntaxEditorView {
             storage.addAttribute(.font, value: baseFont, range: fullRange)
         }
         var didRecomputeSyntaxFontRuns = false
-        if hasReusableRecordedHighlightSnapshot(
+        if let tokens = highlightCoordinator.replayableTokens(
             source: source,
             language: language,
             revision: revision
         ),
            let baseForeground = baseAttributes()[.foregroundColor] as? UIColor {
-            var resolver = makeSyntaxHighlightAttributeResolver(baseAttributes: baseAttributes())
+            var resolver = makeHighlightStyleResolver(baseAttributes: baseAttributes())
             let runSet = syntaxHighlightRunSet(
-                for: lastHighlightTokens,
+                for: tokens,
                 renderRange: fullRange,
                 textLength: storage.length,
                 resolver: &resolver
@@ -342,143 +184,6 @@ extension SyntaxEditorView {
         }
         setNeedsDisplayForVisibleTextFragments()
     }
-    private func resetAppliedHighlightPhaseTrackingForTesting() {
-        appliedHighlightPhaseRecordsForTesting.removeAll()
-        skippedHighlightPhaseRecordsForTesting.removeAll()
-        resumeAppliedHighlightPhaseWaitersForTesting(result: false)
-        resumeSkippedHighlightPhaseWaitersForTesting(result: false)
-    }
-
-    private func hasPendingHighlightForTesting(revision: Int) -> Bool {
-        guard let scheduledHighlightRequest,
-              scheduledHighlightRequest.model === model,
-              scheduledHighlightRequest.revision == revision
-        else {
-            return false
-        }
-        return true
-    }
-
-    private func hasAppliedHighlightPhaseForTesting(
-        _ phase: SyntaxEditorHighlighting.Result.Phase,
-        revision: Int
-    ) -> Bool {
-        appliedHighlightPhaseRecordsForTesting.contains {
-            $0.revision == revision && $0.phase == phase
-        }
-    }
-
-    private func recordAppliedHighlightPhaseForTesting(
-        _ phase: SyntaxEditorHighlighting.Result.Phase,
-        revision: Int
-    ) {
-        appliedHighlightPhaseRecordsForTesting.append(
-            HighlightPhaseRecord(revision: revision, phase: phase)
-        )
-        if appliedHighlightPhaseRecordsForTesting.count > 16 {
-            appliedHighlightPhaseRecordsForTesting.removeFirst(
-                appliedHighlightPhaseRecordsForTesting.count - 16
-            )
-        }
-
-        resumeAppliedHighlightPhaseWaitersForTesting(
-            revision: revision,
-            phase: phase,
-            result: true
-        )
-        resumeSkippedHighlightPhaseWaitersForTesting(
-            revision: revision,
-            phase: phase,
-            result: false
-        )
-        if phase == .complete {
-            resumeSkippedHighlightPhaseWaitersForTesting(
-                revision: revision,
-                result: false
-            )
-        }
-    }
-
-    private func hasSkippedHighlightPhaseForTesting(
-        _ phase: SyntaxEditorHighlighting.Result.Phase,
-        revision: Int
-    ) -> Bool {
-        skippedHighlightPhaseRecordsForTesting.contains {
-            $0.revision == revision && $0.phase == phase
-        }
-    }
-
-    private func recordSkippedHighlightPhaseForTesting(
-        _ phase: SyntaxEditorHighlighting.Result.Phase,
-        revision: Int
-    ) {
-        skippedHighlightPhaseRecordsForTesting.append(
-            HighlightPhaseRecord(revision: revision, phase: phase)
-        )
-        if skippedHighlightPhaseRecordsForTesting.count > 16 {
-            skippedHighlightPhaseRecordsForTesting.removeFirst(
-                skippedHighlightPhaseRecordsForTesting.count - 16
-            )
-        }
-
-        resumeSkippedHighlightPhaseWaitersForTesting(
-            revision: revision,
-            phase: phase,
-            result: true
-        )
-        resumeAppliedHighlightPhaseWaitersForTesting(
-            revision: revision,
-            phase: phase,
-            result: false
-        )
-    }
-
-    private func finishUnresolvedHighlightPhaseWaitersForTesting(revision: Int) {
-        resumeAppliedHighlightPhaseWaitersForTesting(revision: revision, result: false)
-        resumeSkippedHighlightPhaseWaitersForTesting(revision: revision, result: false)
-    }
-
-    private func resumeAppliedHighlightPhaseWaitersForTesting(
-        revision: Int? = nil,
-        phase: SyntaxEditorHighlighting.Result.Phase? = nil,
-        result: Bool
-    ) {
-        var matchedWaiters: [HighlightPhaseWaiter] = []
-        appliedHighlightPhaseWaitersForTesting.removeAll { waiter in
-            guard revision == nil || waiter.revision == revision,
-                  phase == nil || waiter.phase == phase
-            else {
-                return false
-            }
-            matchedWaiters.append(waiter)
-            return true
-        }
-
-        for waiter in matchedWaiters {
-            waiter.continuation.resume(returning: result)
-        }
-    }
-
-    private func resumeSkippedHighlightPhaseWaitersForTesting(
-        revision: Int? = nil,
-        phase: SyntaxEditorHighlighting.Result.Phase? = nil,
-        result: Bool
-    ) {
-        var matchedWaiters: [HighlightPhaseWaiter] = []
-        skippedHighlightPhaseWaitersForTesting.removeAll { waiter in
-            guard revision == nil || waiter.revision == revision,
-                  phase == nil || waiter.phase == phase
-            else {
-                return false
-            }
-            matchedWaiters.append(waiter)
-            return true
-        }
-
-        for waiter in matchedWaiters {
-            waiter.continuation.resume(returning: result)
-        }
-    }
 
     func scheduleHighlight(
         source: String,
@@ -486,186 +191,17 @@ extension SyntaxEditorView {
         revision: Int,
         mutation: SyntaxEditorTextChange.Replacement? = nil
     ) {
-        highlightTask?.cancel()
-        let requestID = nextScheduledHighlightRequestID
-        nextScheduledHighlightRequestID += 1
-        scheduledHighlightRequest = ScheduledHighlightRequest(
-            id: requestID,
-            model: model,
-            language: language,
-            revision: revision,
-            mutation: mutation
-        )
-        resetAppliedHighlightPhaseTrackingForTesting()
         prepareSyntaxHighlightRenderingForPendingHighlight(
             mutation: mutation,
             source: source
         )
-
-        let highlighter = self.highlighter
-        // Viewport hint: progressive opens and background semantic drains
-        // process the chunk nearest this range first (pure ordering hint).
-        let visibleRange = visibleCharacterRangeForHighlightHint()
-        let operation: SyntaxEditorHighlighting.Request.Operation = if let mutation {
-            .update(mutation)
-        } else {
-            .reset
-        }
-        let request = SyntaxEditorHighlighting.Request(
+        highlightCoordinator.schedule(
             source: source,
             language: language,
             revision: revision,
-            operation: operation,
-            visibleRange: visibleRange
+            mutation: mutation,
+            visibleRange: visibleCharacterRangeForHighlightHint()
         )
-        let shouldYieldBeforeReplacingRequest = !source.isEmpty
-        // The user is actively waiting on this pipeline (it recolors the text
-        // just typed); .utility let loaded hosts starve it for long stretches.
-        highlightTask = Task.detached(priority: .userInitiated) { [
-            weak self,
-            highlighter,
-            request,
-            mutation,
-            requestID,
-            shouldYieldBeforeReplacingRequest
-        ] in
-            defer {
-                Task { @MainActor [weak self] in
-                    self?.clearScheduledHighlightRequestIfCurrent(id: requestID)
-                }
-            }
-            if shouldYieldBeforeReplacingRequest {
-                await Task.yield()
-            }
-            guard !Task.isCancelled else {
-                return
-            }
-            let phases = await highlighter.replaceCurrentRequest(with: request)
-            for await result in phases {
-                guard !Task.isCancelled else { return }
-                await self?.applyHighlightResultFromScheduledTask(result, mutation: mutation)
-            }
-        }
-    }
-
-    private func clearScheduledHighlightRequestIfCurrent(id: Int) {
-        guard let request = scheduledHighlightRequest,
-              request.id == id
-        else {
-            return
-        }
-        finishUnresolvedHighlightPhaseWaitersForTesting(revision: request.revision)
-        scheduledHighlightRequest = nil
-    }
-
-    private func applyHighlightResultFromScheduledTask(
-        _ result: SyntaxEditorHighlighting.Result,
-        mutation: SyntaxEditorTextChange.Replacement?
-    ) async {
-        guard !Task.isCancelled else { return }
-        guard model.textRevision == result.revision else { return }
-        guard canApplyHighlightTokenPayload(for: result, mutation: mutation) else {
-            recordSkippedHighlightPhaseForTesting(result.phase, revision: result.revision)
-            scheduleHighlight(source: result.source, language: result.language, revision: result.revision)
-            return
-        }
-        guard shouldMaterializeHighlightResult(result, mutation: mutation) else {
-            recordSkippedHighlightPhaseForTesting(result.phase, revision: result.revision)
-            return
-        }
-        let didApplyHighlight = await applyHighlightFromScheduledTask(
-            result.tokens,
-            expectedRevision: result.revision,
-            source: result.source,
-            language: result.language,
-            refreshRanges: result.refreshRanges
-        )
-        guard didApplyHighlight else { return }
-        recordMaterializedHighlight(
-            phase: result.phase,
-            revision: result.revision,
-            language: result.language
-        )
-        guard result.phase == .complete else { return }
-        recordAppliedHighlightTokenSnapshot(
-            tokens: result.tokens,
-            source: result.source,
-            revision: result.revision,
-            language: result.language,
-            tokenPayload: result.tokenPayload
-        )
-    }
-
-    private func shouldMaterializeHighlightResult(
-        _ result: SyntaxEditorHighlighting.Result,
-        mutation: SyntaxEditorTextChange.Replacement?
-    ) -> Bool {
-        guard mutation != nil,
-              result.phase == .syntacticFastPass
-        else {
-            return true
-        }
-
-        return !hasMaterializedCompletedHighlightToAvoidDowngrade(for: result)
-    }
-
-    private func hasMaterializedCompletedHighlightToAvoidDowngrade(for result: SyntaxEditorHighlighting.Result) -> Bool {
-        guard materializedHighlightPhase == .complete,
-              materializedHighlightLanguage == result.language,
-              highlightStyleStore.hasMaterializedRuns,
-              let materializedHighlightRevision
-        else {
-            return false
-        }
-
-        return materializedHighlightRevision < result.revision
-    }
-
-    private static func highlightTargetRanges(_ ranges: [NSRange], textLength: Int) -> [NSRange] {
-        let validRanges = ranges.filter { $0.location != NSNotFound }
-        let clampedRanges = validRanges.map {
-            SyntaxEditorRangeUtilities.clampedRange($0, utf16Length: textLength)
-        }
-        let nonEmptyRanges = clampedRanges.filter { $0.length > 0 }
-        let clamped = nonEmptyRanges.sorted { lhs, rhs in
-            lhs.location == rhs.location ? lhs.length < rhs.length : lhs.location < rhs.location
-        }
-        guard var current = clamped.first else { return [] }
-        var merged: [NSRange] = []
-        for range in clamped.dropFirst() {
-            if range.location <= current.upperBound {
-                current = NSRange(
-                    location: current.location,
-                    length: max(current.upperBound, range.upperBound) - current.location
-                )
-            } else {
-                merged.append(current)
-                current = range
-            }
-        }
-        merged.append(current)
-        return merged
-    }
-
-    private func canApplyHighlightTokenPayload(
-        for result: SyntaxEditorHighlighting.Result,
-        mutation: SyntaxEditorTextChange.Replacement?
-    ) -> Bool {
-        guard result.tokenPayload == .replacement else {
-            return true
-        }
-        // Reset-origin streams paint progressively: the reset itself defines
-        // the (initially bare) baseline these replacements apply onto, so no
-        // prior materialization is required.
-        if mutation == nil {
-            return true
-        }
-        guard materializedHighlightLanguage == result.language,
-              let materializedHighlightRevision
-        else {
-            return false
-        }
-        return materializedHighlightRevision <= result.revision
     }
 
     func reapplyCachedHighlight(
@@ -677,10 +213,10 @@ extension SyntaxEditorView {
         let language = language ?? model.language
         let revision = revision ?? model.textRevision
 
-        if hasScheduledFullResetHighlight(language: language, revision: revision) {
+        if highlightCoordinator.hasScheduledFullHighlight(language: language, revision: revision) {
             return
         }
-        guard hasReusableRecordedHighlightSnapshot(
+        guard let tokens = highlightCoordinator.replayableTokens(
             source: source,
             language: language,
             revision: revision
@@ -690,65 +226,16 @@ extension SyntaxEditorView {
         }
 
         applyHighlight(
-            lastHighlightTokens,
+            tokens,
             expectedRevision: revision,
             source: source,
             refreshRange: NSRange(location: 0, length: source.utf16.count)
         )
     }
 
-    private func hasReusableRecordedHighlightSnapshot(
-        source: String,
-        language: SyntaxLanguage,
-        revision: Int
-    ) -> Bool {
-        lastHighlightRevision == revision
-            && lastHighlightLanguage == language
-            && lastHighlightSource == source
-    }
-
-    private func hasScheduledFullResetHighlight(
-        language: SyntaxLanguage,
-        revision: Int
-    ) -> Bool {
-        guard let scheduledHighlightRequest,
-              scheduledHighlightRequest.mutation == nil
-        else {
-            return false
-        }
-        return scheduledHighlightRequest.model === model
-            && scheduledHighlightRequest.language == language
-            && scheduledHighlightRequest.revision == revision
-    }
-
     func clearHighlightCache() {
-        highlightTask?.cancel()
-        highlightTask = nil
-        scheduledHighlightRequest = nil
-        resetAppliedHighlightPhaseTrackingForTesting()
-        lastHighlightTokens = []
-        lastHighlightSource = nil
-        lastHighlightRevision = nil
-        lastHighlightLanguage = nil
-        clearMaterializedHighlightState()
+        highlightCoordinator.clear()
         resetSyntaxHighlightRenderingState(textLength: storage.length)
-    }
-
-    private func recordMaterializedHighlight(
-        phase: SyntaxEditorHighlighting.Result.Phase,
-        revision: Int,
-        language: SyntaxLanguage
-    ) {
-        materializedHighlightPhase = phase
-        materializedHighlightRevision = revision
-        materializedHighlightLanguage = language
-        recordAppliedHighlightPhaseForTesting(phase, revision: revision)
-    }
-
-    private func clearMaterializedHighlightState() {
-        materializedHighlightPhase = nil
-        materializedHighlightRevision = nil
-        materializedHighlightLanguage = nil
     }
 
     static func highlightMutation(_ change: SyntaxEditorTextChange) -> SyntaxEditorTextChange.Replacement? {
@@ -776,9 +263,6 @@ extension SyntaxEditorView {
         }
         let base = baseAttributes()
 
-        isApplyingHighlight = true
-        defer { isApplyingHighlight = false }
-
         commitSyntaxHighlightSnapshot(
             for: tokens,
             targetRange: targetRange,
@@ -791,32 +275,23 @@ extension SyntaxEditorView {
         updateTypingAttributes()
         applyMatchingBracketHighlight(force: true)
         setNeedsDisplayForVisibleTextFragments()
-        recordMaterializedHighlight(
+        highlightCoordinator.recordMaterialized(
             phase: .complete,
             revision: expectedRevision,
             language: model.language
         )
     }
 
-    private func applyHighlightFromScheduledTask(
-        _ tokens: [SyntaxEditorHighlighting.Token],
-        expectedRevision: Int,
-        source expectedSource: String,
-        language expectedLanguage: SyntaxLanguage,
-        refreshRanges: [NSRange]
-    ) async -> Bool {
-        guard model.textRevision == expectedRevision else { return false }
-        guard model.language == expectedLanguage,
-              text == expectedSource
+    package func applyHighlightResult(_ result: SyntaxEditorHighlighting.Result) async -> Bool {
+        guard model.textRevision == result.revision else { return false }
+        guard model.language == result.language,
+              text == result.source
         else {
             return false
         }
 
-        let textLength = expectedSource.utf16.count
-        let targetRanges = Self.highlightTargetRanges(
-            refreshRanges,
-            textLength: textLength
-        )
+        let textLength = result.source.utf16.count
+        let targetRanges = result.refreshRanges(clampedToTextLength: textLength)
         guard !targetRanges.isEmpty else {
             applyMatchingBracketHighlight(force: true)
             return true
@@ -825,12 +300,12 @@ extension SyntaxEditorView {
 
         for targetRange in targetRanges {
             guard await commitSyntaxHighlightSnapshotFromScheduledTask(
-                for: tokens,
+                for: result.tokens,
                 targetRange: targetRange,
                 baseAttributes: base,
                 textLength: textLength,
-                revision: expectedRevision,
-                language: expectedLanguage
+                revision: result.revision,
+                language: result.language
             ) else {
                 return false
             }
@@ -843,34 +318,10 @@ extension SyntaxEditorView {
         return true
     }
 
-    private func recordAppliedHighlightTokenSnapshot(
-        tokens: [SyntaxEditorHighlighting.Token],
-        source: String,
-        revision: Int,
-        language: SyntaxLanguage,
-        tokenPayload: SyntaxEditorHighlighting.Result.Payload
-    ) {
-        guard tokenPayload == .fullSnapshot else {
-            clearRecordedHighlightTokenSnapshot()
-            return
-        }
-        lastHighlightTokens = tokens
-        lastHighlightSource = source
-        lastHighlightRevision = revision
-        lastHighlightLanguage = language
-    }
-
-    private func clearRecordedHighlightTokenSnapshot() {
-        lastHighlightTokens = []
-        lastHighlightSource = nil
-        lastHighlightRevision = nil
-        lastHighlightLanguage = nil
-    }
-
-    private func makeSyntaxHighlightAttributeResolver(
+    private func makeHighlightStyleResolver(
         baseAttributes: [NSAttributedString.Key: Any]
-    ) -> SyntaxHighlightAttributeResolver {
-        SyntaxHighlightAttributeResolver(
+    ) -> HighlightStyleResolver {
+        HighlightStyleResolver(
             theme: lastAppliedTheme,
             defaultLanguage: model.language,
             appearance: currentThemeAppearance,
@@ -885,20 +336,14 @@ extension SyntaxEditorView {
         for tokens: [SyntaxEditorHighlighting.Token],
         renderRange: NSRange,
         textLength: Int,
-        resolver: inout SyntaxHighlightAttributeResolver
+        resolver: inout HighlightStyleResolver
     ) -> HighlightRunSet {
         HighlightRunAssembler.assembleRunSet(
             for: tokens,
             targetRange: renderRange,
             textLength: textLength
         ) { token in
-            guard let resolved = resolver.style(for: token.syntaxID, language: token.language) else {
-                return nil
-            }
-            return HighlightRunStyle(
-                foregroundColor: resolved.style.foregroundColor,
-                font: resolved.style.font
-            )
+            resolver.style(for: token.syntaxID, language: token.language)?.style
         }
     }
 
@@ -911,7 +356,7 @@ extension SyntaxEditorView {
         language: SyntaxLanguage
     ) {
         guard let baseForeground = baseAttributes[.foregroundColor] as? UIColor else { return }
-        var resolver = makeSyntaxHighlightAttributeResolver(baseAttributes: baseAttributes)
+        var resolver = makeHighlightStyleResolver(baseAttributes: baseAttributes)
         let runSet = syntaxHighlightRunSet(
             for: tokens,
             renderRange: targetRange,
@@ -947,7 +392,7 @@ extension SyntaxEditorView {
             return
         }
 
-        let invalidatedRange = pendingTextReplacementRange(in: source, mutation: mutation)
+        let invalidatedRange = mutation.repaintRange(inTextOfLength: textLength)
         highlightStyleStore.recordPendingEdit(mutation, currentTextLength: textLength)
         invalidateSyntaxRenderingAttributes(for: [invalidatedRange])
         guard invalidatedRange.length > 0 else { return }
@@ -963,30 +408,13 @@ extension SyntaxEditorView {
             baseFont: base[.font] as? UIFont
         )
         invalidateSyntaxRenderingAttributes(for: [NSRange(location: 0, length: storage.length)])
-        clearMaterializedHighlightState()
+        highlightCoordinator.clearMaterialized()
         setNeedsDisplayForVisibleTextFragments()
     }
 
     func resetSyntaxHighlightRenderingState(textLength: Int) {
         highlightStyleStore.reset(textLength: textLength)
-        clearMaterializedHighlightState()
-    }
-
-    private func pendingTextReplacementRange(
-        in source: String,
-        mutation: SyntaxEditorTextChange.Replacement
-    ) -> NSRange {
-        let textLength = source.utf16.count
-        let location = min(max(0, mutation.location), textLength)
-        let replacementLength = min(max(0, mutation.replacement.utf16.count), textLength - location)
-        if replacementLength > 0 {
-            return NSRange(location: location, length: replacementLength)
-        }
-        guard textLength > 0 else {
-            return NSRange(location: 0, length: 0)
-        }
-        let fallbackLocation = min(location, textLength - 1)
-        return NSRange(location: fallbackLocation, length: 1)
+        highlightCoordinator.clearMaterialized()
     }
 
     private func commitSyntaxHighlightSnapshotFromScheduledTask(
@@ -1000,8 +428,6 @@ extension SyntaxEditorView {
         guard !Task.isCancelled, model.textRevision == revision else {
             return false
         }
-        isApplyingHighlight = true
-        defer { isApplyingHighlight = false }
         commitSyntaxHighlightSnapshot(
             for: tokens,
             targetRange: targetRange,
@@ -1019,13 +445,13 @@ extension SyntaxEditorView {
         let targetRange = SyntaxEditorRangeUtilities.clampedRange(range, utf16Length: textLength)
         guard targetRange.length > 0 else { return }
 
-        if hasReusableRecordedHighlightSnapshot(
+        if let tokens = highlightCoordinator.replayableTokens(
             source: text,
             language: model.language,
             revision: model.textRevision
         ) {
             applyHighlight(
-                lastHighlightTokens,
+                tokens,
                 expectedRevision: model.textRevision,
                 source: text,
                 refreshRange: targetRange
