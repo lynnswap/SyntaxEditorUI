@@ -9,7 +9,26 @@ from pathlib import Path
 from typing import Any
 
 
-DEFAULT_TOOLCHAIN_APP = Path("/Applications/Xcode.app")
+def selected_toolchain_app() -> Path:
+    """Return the Xcode that DEVELOPER_DIR or xcode-select selects.
+
+    Falls back to the default install location when the selected developer
+    directory is not inside an Xcode app, as with the standalone Command Line
+    Tools.
+    """
+    result = subprocess.run(
+        ["xcode-select", "-p"], capture_output=True, text=True, check=False
+    )
+    developer_dir = result.stdout.strip()
+    if result.returncode == 0 and developer_dir:
+        selected = Path(developer_dir).resolve()
+        for candidate in (selected, *selected.parents):
+            if candidate.suffix == ".app":
+                return candidate
+    return Path("/Applications/Xcode.app")
+
+
+DEFAULT_TOOLCHAIN_APP = selected_toolchain_app()
 SOURCE_MODEL_RESOURCE_SUFFIX = Path(
     "Contents/SharedFrameworks/SourceModel.framework/Versions/A/Resources"
 )
