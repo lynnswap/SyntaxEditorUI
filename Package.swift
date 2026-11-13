@@ -3,23 +3,19 @@
 import Foundation
 import PackageDescription
 
-/// The `Contents` directory of the selected Xcode: the one `DEVELOPER_DIR`
-/// names, or else the one `xcode-select` points at. When the selection is not
-/// inside an Xcode app, as with the standalone Command Line Tools, this is the
-/// default install location.
+/// The `Contents` directory of the selected Xcode: the app that contains the
+/// developer directory `DEVELOPER_DIR` names, or else the one `xcode-select`
+/// points at. When that directory is not inside an Xcode app, as with the
+/// standalone Command Line Tools, this is the default install location.
 let xcodeContentsPath: String = {
     let selection = Context.environment["DEVELOPER_DIR"].flatMap { $0.isEmpty ? nil : $0 }
-        ?? (try? FileManager.default.destinationOfSymbolicLink(atPath: "/var/db/xcode_select_link"))
-    if let selection {
-        let url = URL(fileURLWithPath: selection)
-        // `DEVELOPER_DIR` may name the app bundle instead of its `Contents/Developer`.
+        ?? "/var/db/xcode_select_link"
+    var url = URL(fileURLWithPath: selection).resolvingSymlinksInPath()
+    while url.path != "/" {
         if url.pathExtension == "app" {
             return url.appendingPathComponent("Contents").path
         }
-        let contents = url.deletingLastPathComponent()
-        if contents.deletingLastPathComponent().pathExtension == "app" {
-            return contents.path
-        }
+        url.deleteLastPathComponent()
     }
     return "/Applications/Xcode.app/Contents"
 }()

@@ -14,26 +14,23 @@ import SymbolCacheIndexing
 import SymbolCacheSupport
 #endif
 
-/// The Xcode the tool reads from unless `--xcode` names another: the one
-/// `DEVELOPER_DIR` names, or else the one `xcode-select` points at. When the
-/// selection is not inside an Xcode app, as with the standalone Command Line
-/// Tools, this is the default install location. `Package.swift` picks the
-/// frameworks the tool links against by the same rule.
+/// The Xcode the tool reads from unless `--xcode` names another: the one whose
+/// frameworks this process loaded, so resources and themes come from the same
+/// installation as the code that interprets them.
 private let defaultToolchainAppPath: String = {
-    let selection = ProcessInfo.processInfo.environment["DEVELOPER_DIR"].flatMap { $0.isEmpty ? nil : $0 }
-        ?? (try? FileManager.default.destinationOfSymbolicLink(atPath: "/var/db/xcode_select_link"))
-    if let selection {
-        let url = URL(fileURLWithPath: selection)
-        // `DEVELOPER_DIR` may name the app bundle instead of its `Contents/Developer`.
-        if url.pathExtension == "app" {
-            return url.path
-        }
-        let app = url.deletingLastPathComponent().deletingLastPathComponent()
-        if app.pathExtension == "app" {
-            return app.path
-        }
+    let sourceModel = Bundle.allFrameworks.first {
+        $0.bundleURL.lastPathComponent == "SourceModel.framework"
     }
-    return "/Applications/Xcode.app"
+    // <Xcode.app>/Contents/SharedFrameworks/SourceModel.framework
+    guard let app = sourceModel?.bundleURL
+        .deletingLastPathComponent()
+        .deletingLastPathComponent()
+        .deletingLastPathComponent(),
+        app.pathExtension == "app"
+    else {
+        return "/Applications/Xcode.app"
+    }
+    return app.path
 }()
 
 private enum SemanticDepth: String, Sendable {
