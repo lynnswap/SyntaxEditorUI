@@ -10,8 +10,6 @@ extension SyntaxEditorView {
     var layoutManager: NSTextLayoutManager { textSystem.layoutManager }
     var container: NSTextContainer { textSystem.container }
     var highlightStyleStore: HighlightRenderSnapshotStore { textSystem.styleStore }
-    var modelDeliveryForTesting: PortableObservationTracking.Token? { modelObservation }
-    var modelConfigurationDeliveryForTesting: PortableObservationTracking.Token? { modelConfigurationObservation }
     var storage: NSTextStorage {
         textSystem.textStorage
     }
@@ -30,48 +28,6 @@ extension SyntaxEditorView {
 
     internal var attributedText: NSAttributedString? {
         storage.copy() as? NSAttributedString
-    }
-
-    internal var renderedTextContentFrameForTesting: CGRect {
-        textContentView.frame
-    }
-
-    internal var bracketHighlightRangesForTesting: [NSRange] {
-        matchedBracketRanges
-    }
-
-    internal var findFoundRangesForTesting: [NSRange] {
-        findFoundRanges
-    }
-
-    internal var findHighlightedRangesForTesting: [NSRange] {
-        findHighlightedRanges
-    }
-
-    internal var findHighlightUpdatePassCountForTesting: Int {
-        findHighlightUpdatePassCount
-    }
-
-    internal func syntaxForegroundColorForTesting(at location: Int) -> UIColor? {
-        guard location >= 0,
-              location < storage.length
-        else {
-            return nil
-        }
-        return highlightStyleStore.foregroundColor(at: location)
-    }
-
-    internal func syntaxFontForTesting(at location: Int) -> UIFont? {
-        guard location >= 0,
-              location < storage.length
-        else {
-            return nil
-        }
-        return highlightStyleStore.font(at: location)
-    }
-
-    internal func baseForegroundColorForTesting() -> UIColor? {
-        highlightStyleStore.baseForeground
     }
 
     /// The native find interaction, or `nil` when find is disabled.

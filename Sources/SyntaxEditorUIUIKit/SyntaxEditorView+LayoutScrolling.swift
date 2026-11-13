@@ -5,9 +5,6 @@ import UIKit
 
 @MainActor
 extension SyntaxEditorView {
-    internal var lineMetricsFullRebuildCountForTesting: Int {
-        lineMetrics.fullRebuildCount
-    }
     public override var bounds: CGRect {
         didSet {
             if bounds.origin != oldValue.origin { didChangeComparisonViewport?() }

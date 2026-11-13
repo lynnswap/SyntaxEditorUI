@@ -48,24 +48,6 @@
       }
     }
 
-    var modelDeliveryForTesting: PortableObservationTracking.Token? { modelObservation }
-    var modelConfigurationDeliveryForTesting: PortableObservationTracking.Token? {
-      modelConfigurationObservation
-    }
-
-    internal func synchronizeDocumentForTesting() {
-      applyObservedConfiguration(
-        language: model.language,
-        isEditable: model.isEditable,
-        lineWrappingEnabled: model.lineWrappingEnabled,
-        theme: model.theme,
-        drawsBackground: model.drawsBackground,
-        fontSizeDelta: model.fontSizeDelta
-      )
-      applyObservedModelChange()
-      applyObservedSelection(model.selectedRange)
-    }
-
     func startModelObservation(
       schedulesInitialHighlight: Bool = true,
       skipsInitialModelDelivery: Bool = false
@@ -132,7 +114,7 @@
       applyObservedSelection(model.selectedRange)
     }
 
-    private func applyObservedModelChange(
+    func applyObservedModelChange(
       forceTextUpdate: Bool = false, observedRevision: Int? = nil
     ) {
       let revision = observedRevision ?? model.textRevision
@@ -194,7 +176,7 @@
       lastAppliedDocumentRevision = revision
     }
 
-    private func applyObservedSelection(_ range: NSRange) {
+    func applyObservedSelection(_ range: NSRange) {
       let clamped = SyntaxEditorRangeUtilities.clampedRange(range, utf16Length: textStorage.length)
       guard textView.selectedRange() != clamped else { return }
 
@@ -205,7 +187,7 @@
       textView.setSelectedRange(clamped)
     }
 
-    private func applyObservedConfiguration(
+    func applyObservedConfiguration(
       language: SyntaxLanguage,
       isEditable: Bool,
       lineWrappingEnabled: Bool,

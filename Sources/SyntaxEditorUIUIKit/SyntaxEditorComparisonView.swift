@@ -21,13 +21,14 @@ public final class SyntaxEditorComparisonView: UIView {
     let inlineLayout: SyntaxEditorInlineComparisonLayout
     private let divider = UIView()
     lazy var viewport = SyntaxEditorComparisonViewport(comparison: self)
-    private var comparisonObservation: PortableObservationTracking.Token?
-    private var configurationObservation: PortableObservationTracking.Token?
-    private var refreshTask: Task<Void, Never>?
+    var comparisonObservation: PortableObservationTracking.Token?
+    var configurationObservation: PortableObservationTracking.Token?
+    var refreshTask: Task<Void, Never>?
     private var needsAppearanceRefresh = false
     private var displayedContent: ContentIdentity?
-    private var displayedSelection: Int?
-    private var refreshWaitersForTesting: [CheckedContinuation<Void, Never>] = []
+    var displayedSelection: Int?
+    /// Called each time a refresh is scheduled.
+    var didScheduleRefresh: (() -> Void)?
 
     private struct ContentIdentity: Equatable {
         let originalRevision: Int
@@ -47,21 +48,7 @@ public final class SyntaxEditorComparisonView: UIView {
 
     var hasUnappliedComparisonContent: Bool { displayedContent != currentContentIdentity }
 
-    var comparisonDeliveryForTesting: PortableObservationTracking.Token? { comparisonObservation }
-    var comparisonConfigurationDeliveryForTesting: PortableObservationTracking.Token? { configurationObservation }
     var displayedPresentation: SyntaxEditorComparisonModel.Presentation { displayedContent?.presentation ?? model.presentation }
-    var displayedPresentationForTesting: SyntaxEditorComparisonModel.Presentation { displayedPresentation }
-
-    func waitForPendingComparisonRefreshForTesting(until isReady: () -> Bool = { true }) async {
-        while refreshTask != nil || displayedContent != currentContentIdentity
-            || displayedSelection != model.selectedChangeIndex || !isReady() {
-            if let task = refreshTask {
-                await task.value
-            } else {
-                await withCheckedContinuation { refreshWaitersForTesting.append($0) }
-            }
-        }
-    }
 
     /// Creates a comparison view with an app-owned model.
     public init(model: SyntaxEditorComparisonModel) {
@@ -230,9 +217,7 @@ public final class SyntaxEditorComparisonView: UIView {
             self.refreshTask = nil
             self.refreshComparison()
         }
-        let waiters = refreshWaitersForTesting
-        refreshWaitersForTesting.removeAll()
-        for waiter in waiters { waiter.resume() }
+        didScheduleRefresh?()
     }
 
     private func refreshComparison() {

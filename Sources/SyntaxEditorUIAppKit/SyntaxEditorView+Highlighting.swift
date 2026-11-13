@@ -39,60 +39,6 @@
       scheduleHighlight(source: source, language: language, revision: revision)
     }
 
-    internal var bracketHighlightRangesForTesting: [NSRange] {
-      matchedBracketRanges
-    }
-
-    internal var visibleTextDisplayInvalidationCountForTesting: Int {
-      visibleTextDisplayInvalidationCount
-    }
-
-    internal var fullTextDisplayInvalidationCountForTesting: Int {
-      fullTextDisplayInvalidationCount
-    }
-
-    internal var fragmentDisplayInvalidationCountForTesting: Int {
-      textView.fragmentDisplayInvalidationCount
-    }
-
-    internal var syntaxForegroundMaterializationCountForTesting: Int {
-      textSystem.styleStore.epoch
-    }
-
-    internal var syntaxRenderingAttributeApplicationCountForTesting: Int {
-      textView.syntaxRenderingAttributeApplicationCountForTesting
-    }
-
-    internal var syntaxColorRunCountForTesting: Int {
-      textSystem.styleStore.appliedColorRunsForTesting.count
-    }
-
-    internal var lineMetricsFullRebuildCountForTesting: Int {
-      textView.lineMetrics.fullRebuildCount
-    }
-
-    internal func syntaxForegroundColorForTesting(at location: Int) -> NSColor? {
-      guard location >= 0,
-        location < textStorage.length
-      else {
-        return nil
-      }
-      return textSystem.styleStore.foregroundColor(at: location)
-    }
-
-    internal func syntaxFontForTesting(at location: Int) -> NSFont? {
-      guard location >= 0,
-        location < textStorage.length
-      else {
-        return nil
-      }
-      return textSystem.styleStore.font(at: location)
-    }
-
-    internal func baseForegroundColorForTesting() -> NSColor? {
-      textSystem.styleStore.baseForeground
-    }
-
     func scheduleHighlight(
       source: String,
       language: SyntaxLanguage,
