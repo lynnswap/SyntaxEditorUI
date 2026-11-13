@@ -381,41 +381,6 @@ let package = Package(
             ]
         ),
         .testTarget(
-            name: "SyntaxEditorUIAppKitTests",
-            dependencies: [
-                "SyntaxEditorUIAppKit",
-                "SyntaxEditorUITestSupport",
-            ]
-        ),
-        .testTarget(
-            name: "SyntaxEditorUIUIKitTests",
-            dependencies: [
-                "SyntaxEditorUIUIKit",
-                "SyntaxEditorUITestSupport",
-            ]
-        ),
-        .testTarget(
-            name: "SyntaxEditorUISwiftUITests",
-            dependencies: [
-                "SyntaxEditorUISwiftUI",
-                "SyntaxEditorUITestSupport",
-            ]
-        ),
-        .target(
-            name: "SyntaxEditorUITestSupport",
-            dependencies: [
-                "SyntaxEditorCore",
-                "SyntaxEditorUI",
-                .product(name: "ObservationBridge", package: "observationbridge"),
-            ],
-            path: "Tests/SyntaxEditorUITestSupport",
-            swiftSettings: [
-                .swiftLanguageMode(.v6),
-                .defaultIsolation(nil),
-                .strictMemorySafety(),
-            ]
-        ),
-        .testTarget(
             name: "SyntaxEditorCoreTests",
             dependencies: [
                 "SyntaxEditorCore",
@@ -437,7 +402,6 @@ let package = Package(
                 "SyntaxEditorUI",
                 "SyntaxEditorUIAppKit",
                 "SyntaxEditorUIUIKit",
-                "SyntaxEditorUITestSupport",
                 .product(name: "ObservationBridge", package: "observationbridge"),
             ]
         ),

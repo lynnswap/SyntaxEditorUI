@@ -29,48 +29,6 @@
             buildForAnalyzing = "YES">
             <BuildableReference
                BuildableIdentifier = "primary"
-               BlueprintIdentifier = "SyntaxEditorUIAppKitTests"
-               BuildableName = "SyntaxEditorUIAppKitTests"
-               BlueprintName = "SyntaxEditorUIAppKitTests"
-               ReferencedContainer = "container:">
-            </BuildableReference>
-         </BuildActionEntry>
-         <BuildActionEntry
-            buildForTesting = "YES"
-            buildForRunning = "NO"
-            buildForProfiling = "NO"
-            buildForArchiving = "NO"
-            buildForAnalyzing = "YES">
-            <BuildableReference
-               BuildableIdentifier = "primary"
-               BlueprintIdentifier = "SyntaxEditorUIUIKitTests"
-               BuildableName = "SyntaxEditorUIUIKitTests"
-               BlueprintName = "SyntaxEditorUIUIKitTests"
-               ReferencedContainer = "container:">
-            </BuildableReference>
-         </BuildActionEntry>
-         <BuildActionEntry
-            buildForTesting = "YES"
-            buildForRunning = "NO"
-            buildForProfiling = "NO"
-            buildForArchiving = "NO"
-            buildForAnalyzing = "YES">
-            <BuildableReference
-               BuildableIdentifier = "primary"
-               BlueprintIdentifier = "SyntaxEditorUISwiftUITests"
-               BuildableName = "SyntaxEditorUISwiftUITests"
-               BlueprintName = "SyntaxEditorUISwiftUITests"
-               ReferencedContainer = "container:">
-            </BuildableReference>
-         </BuildActionEntry>
-         <BuildActionEntry
-            buildForTesting = "YES"
-            buildForRunning = "NO"
-            buildForProfiling = "NO"
-            buildForArchiving = "NO"
-            buildForAnalyzing = "YES">
-            <BuildableReference
-               BuildableIdentifier = "primary"
                BlueprintIdentifier = "SyntaxEditorUITests"
                BuildableName = "SyntaxEditorUITests"
                BlueprintName = "SyntaxEditorUITests"
@@ -98,36 +56,6 @@
                BlueprintIdentifier = "SyntaxEditorUICommonTests"
                BuildableName = "SyntaxEditorUICommonTests"
                BlueprintName = "SyntaxEditorUICommonTests"
-               ReferencedContainer = "container:">
-            </BuildableReference>
-         </TestableReference>
-         <TestableReference
-            skipped = "NO">
-            <BuildableReference
-               BuildableIdentifier = "primary"
-               BlueprintIdentifier = "SyntaxEditorUIAppKitTests"
-               BuildableName = "SyntaxEditorUIAppKitTests"
-               BlueprintName = "SyntaxEditorUIAppKitTests"
-               ReferencedContainer = "container:">
-            </BuildableReference>
-         </TestableReference>
-         <TestableReference
-            skipped = "NO">
-            <BuildableReference
-               BuildableIdentifier = "primary"
-               BlueprintIdentifier = "SyntaxEditorUIUIKitTests"
-               BuildableName = "SyntaxEditorUIUIKitTests"
-               BlueprintName = "SyntaxEditorUIUIKitTests"
-               ReferencedContainer = "container:">
-            </BuildableReference>
-         </TestableReference>
-         <TestableReference
-            skipped = "NO">
-            <BuildableReference
-               BuildableIdentifier = "primary"
-               BlueprintIdentifier = "SyntaxEditorUISwiftUITests"
-               BuildableName = "SyntaxEditorUISwiftUITests"
-               BlueprintName = "SyntaxEditorUISwiftUITests"
                ReferencedContainer = "container:">
             </BuildableReference>
          </TestableReference>
