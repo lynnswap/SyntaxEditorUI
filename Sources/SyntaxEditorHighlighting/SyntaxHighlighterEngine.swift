@@ -823,7 +823,7 @@ final class HighlightSession {
                     case .full:
                         break
                     }
-                    let merged = Self.mergedRanges(targets)
+                    let merged = SyntaxEditorRangeUtilities.mergedRanges(targets)
                     let totalLength = merged.reduce(0) { $0 + $1.length }
                     if totalLength * 2 > nextLength {
                         // Fan-out exceeds half the document: the full merge is cheaper
@@ -889,7 +889,7 @@ final class HighlightSession {
         }
         let nextSourceUTF16Length = nextSource.utf16.count
         resultRefresh = SyntaxEditorRangeUtilities.clampedRange(resultRefresh, utf16Length: nextSourceUTF16Length)
-        let normalizedResultRefreshRanges = Self.mergedRanges(resultRefreshRanges.map {
+        let normalizedResultRefreshRanges = SyntaxEditorRangeUtilities.mergedRanges(resultRefreshRanges.map {
             SyntaxEditorRangeUtilities.clampedRange($0, utf16Length: nextSourceUTF16Length)
         })
         let replacementPayloadTokens = normalizedResultRefreshRanges.flatMap {
@@ -1060,24 +1060,6 @@ final class HighlightSession {
     // MARK: - Helpers
 
 
-    /// Sorts and merges overlapping/adjacent ranges.
-    static func mergedRanges(_ ranges: [NSRange]) -> [NSRange] {
-        guard ranges.count > 1 else { return ranges.filter { $0.length > 0 } }
-        let sorted = ranges.filter { $0.length > 0 }.sorted { $0.location < $1.location }
-        var merged: [NSRange] = []
-        for range in sorted {
-            if let last = merged.last, range.location <= last.upperBound {
-                merged[merged.count - 1] = NSRange(
-                    location: last.location,
-                    length: max(last.upperBound, range.upperBound) - last.location
-                )
-            } else {
-                merged.append(range)
-            }
-        }
-        return merged
-    }
-
     private func semanticRootNodeSnapshot() -> Node? {
         guard language == .swift || language == .objectiveC else { return nil }
         return layer?.snapshot()?.rootSnapshot.tree.rootNode
@@ -1170,7 +1152,7 @@ final class HighlightSession {
         case .fullSnapshot:
             return tokens
         case .replacement:
-            let refreshRanges = Self.mergedRanges(refreshRanges)
+            let refreshRanges = SyntaxEditorRangeUtilities.mergedRanges(refreshRanges)
             let filtered = tokens.filter {
                 token in refreshRanges.contains {
                     token.range.location < $0.upperBound && token.range.upperBound > $0.location

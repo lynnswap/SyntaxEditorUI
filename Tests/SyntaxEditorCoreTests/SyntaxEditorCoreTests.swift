@@ -367,7 +367,7 @@ struct SyntaxEditorCoreTests {
         #expect(darkKeyword?.font.weight == .bold)
     }
 
-    @Test("SyntaxEditorRangeUtilities clamps and intersects UTF-16 ranges")
+    @Test("SyntaxEditorRangeUtilities clamps, intersects, and merges UTF-16 ranges")
     func syntaxEditorRangeUtilities() {
         let clamped = SyntaxEditorRangeUtilities.clampedRange(NSRange(location: -4, length: 20), utf16Length: 10)
         #expect(clamped == NSRange(location: 0, length: 10))
@@ -377,6 +377,16 @@ struct SyntaxEditorCoreTests {
             and: NSRange(location: 0, length: 5)
         )
         #expect(intersection == NSRange(location: 4, length: 1))
+
+        let merged = SyntaxEditorRangeUtilities.mergedRanges([
+            NSRange(location: 10, length: 2),
+            NSRange(location: 0, length: 3),
+            NSRange(location: 3, length: 1),
+            NSRange(location: 2, length: 4),
+            NSRange(location: 8, length: 0),
+            NSRange(location: NSNotFound, length: 1),
+        ])
+        #expect(merged == [NSRange(location: 0, length: 6), NSRange(location: 10, length: 2)])
     }
 
     @Test("SyntaxEditorTextChange.Replacement returns nil when text does not change")

@@ -1200,39 +1200,9 @@ fileprivate enum HighlightRunUtilities {
     }
 
     static func normalizedRanges(_ ranges: [NSRange], textLength: Int) -> [NSRange] {
-        coalescedRanges(
-            ranges
-                .map { SyntaxEditorRangeUtilities.clampedRange($0, utf16Length: textLength) }
-                .filter { $0.length > 0 }
-                .sorted { lhs, rhs in
-                    if lhs.location == rhs.location {
-                        lhs.length < rhs.length
-                    } else {
-                        lhs.location < rhs.location
-                    }
-                }
+        SyntaxEditorRangeUtilities.mergedRanges(
+            ranges.map { SyntaxEditorRangeUtilities.clampedRange($0, utf16Length: textLength) }
         )
-    }
-
-    static func coalescedRanges(_ ranges: [NSRange]) -> [NSRange] {
-        var coalescedRanges: [NSRange] = []
-        coalescedRanges.reserveCapacity(ranges.count)
-
-        for range in ranges {
-            if let last = coalescedRanges.last,
-               last.upperBound >= range.location {
-                let lowerBound = min(last.location, range.location)
-                let upperBound = max(last.upperBound, range.upperBound)
-                coalescedRanges[coalescedRanges.count - 1] = NSRange(
-                    location: lowerBound,
-                    length: upperBound - lowerBound
-                )
-            } else {
-                coalescedRanges.append(range)
-            }
-        }
-
-        return coalescedRanges
     }
 
     static func clippedColorRuns(
