@@ -147,6 +147,9 @@ package struct Request: Equatable, Sendable {
     package let language: SyntaxLanguage
     package let revision: Int
     package let operation: Operation
+    /// Viewport hint: progressive opens and background semantic drains process
+    /// the chunk nearest this range first. Purely an ordering hint — results
+    /// and convergence are identical without it.
     package let visibleRange: NSRange?
 
     package init(
@@ -194,102 +197,15 @@ package enum Invalidation {
     }
 }
 
+/// The highlighting service an editor view talks to.
 package protocol Engine: Sendable {
-    func reset(source: String, language: SyntaxLanguage, revision: Int) async -> SyntaxEditorHighlighting.Result
-    func resetPhases(
-        source: String,
-        language: SyntaxLanguage,
-        revision: Int
-    ) async -> AsyncStream<SyntaxEditorHighlighting.Result>
-    func update(
-        source: String,
-        language: SyntaxLanguage,
-        mutation: SyntaxEditorTextChange.Replacement,
-        revision: Int
-    ) async -> SyntaxEditorHighlighting.Result
-    func updatePhases(
-        source: String,
-        language: SyntaxLanguage,
-        mutation: SyntaxEditorTextChange.Replacement,
-        revision: Int
-    ) async -> AsyncStream<SyntaxEditorHighlighting.Result>
-    /// Viewport hint: progressive opens and background semantic drains process
-    /// the chunk nearest this range first. Purely an ordering hint — results
-    /// and convergence are identical without it.
-    func setVisibleRange(_ range: NSRange?) async
+    /// Cancels the request in flight, if any, and starts `request`.
+    ///
+    /// The stream yields zero or more partial results and ends after the
+    /// complete result. A request replaced by a later call ends its stream
+    /// without a complete result.
     func replaceCurrentRequest(with request: SyntaxEditorHighlighting.Request) async -> AsyncStream<SyntaxEditorHighlighting.Result>
 }
-}
-
-package extension SyntaxEditorHighlighting.Engine {
-    func setVisibleRange(_ range: NSRange?) async {}
-
-    func replaceCurrentRequest(with request: SyntaxEditorHighlighting.Request) async -> AsyncStream<SyntaxEditorHighlighting.Result> {
-        await setVisibleRange(request.visibleRange)
-        switch request.operation {
-        case .reset:
-            return await resetPhases(
-                source: request.source,
-                language: request.language,
-                revision: request.revision
-            )
-        case .update(let mutation):
-            return await updatePhases(
-                source: request.source,
-                language: request.language,
-                mutation: mutation,
-                revision: request.revision
-            )
-        }
-    }
-
-    func resetPhases(
-        source: String,
-        language: SyntaxLanguage,
-        revision: Int
-    ) async -> AsyncStream<SyntaxEditorHighlighting.Result> {
-        AsyncStream { continuation in
-            let task = Task {
-                let result = await reset(source: source, language: language, revision: revision)
-                guard !Task.isCancelled else {
-                    continuation.finish()
-                    return
-                }
-                continuation.yield(result)
-                continuation.finish()
-            }
-            continuation.onTermination = { @Sendable _ in
-                task.cancel()
-            }
-        }
-    }
-
-    func updatePhases(
-        source: String,
-        language: SyntaxLanguage,
-        mutation: SyntaxEditorTextChange.Replacement,
-        revision: Int
-    ) async -> AsyncStream<SyntaxEditorHighlighting.Result> {
-        AsyncStream { continuation in
-            let task = Task {
-                let result = await update(
-                    source: source,
-                    language: language,
-                    mutation: mutation,
-                    revision: revision
-                )
-                guard !Task.isCancelled else {
-                    continuation.finish()
-                    return
-                }
-                continuation.yield(result)
-                continuation.finish()
-            }
-            continuation.onTermination = { @Sendable _ in
-                task.cancel()
-            }
-        }
-    }
 }
 
 extension SyntaxEditorHighlighting.Result {

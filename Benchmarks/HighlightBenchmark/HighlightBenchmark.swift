@@ -397,10 +397,10 @@ private enum HighlightBenchmarkRunner {
                 revision: revision
             )
         }
-        let settledTokens = await engine.currentTokensForTesting()
+        let settledTokens = await engine.currentTokens()
         let freshEngine = SyntaxHighlighterEngine()
         _ = await freshEngine.reset(source: currentSource, language: workload.language, revision: 0)
-        let freshTokens = await freshEngine.currentTokensForTesting()
+        let freshTokens = await freshEngine.currentTokens()
         let matchesFresh = settledTokens == freshTokens
         let completeRefreshRanges = finalCompleteResult?.refreshRanges ?? settled.refreshRanges
         let completeRefreshTotalLength = completeRefreshRanges.reduce(0) { $0 + $1.length }

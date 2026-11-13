@@ -131,7 +131,7 @@ package struct PendingHighlightEditMap {
         edits.isEmpty
     }
 
-    package var editCountForTesting: Int {
+    package var editCount: Int {
         edits.count
     }
 
@@ -534,6 +534,16 @@ private struct OptimisticHighlightRunSet {
 
 @MainActor
 package final class HighlightRenderSnapshotStore {
+    /// Scattered edits that do not coalesce grow the pending-edit map, and
+    /// every snapshot-range mapping costs O(#edits). The engine delivers narrow
+    /// refreshes by design, so the map never clears on its own; past this many
+    /// edits the store folds them into the snapshot.
+    private let pendingEditCheckpointThreshold: Int
+
+    package init(pendingEditCheckpointThreshold: Int = 64) {
+        self.pendingEditCheckpointThreshold = pendingEditCheckpointThreshold
+    }
+
     package private(set) var generation = 0
     package var epoch: Int { generation }
     package private(set) var snapshot: HighlightRenderSnapshot = .empty
@@ -617,7 +627,7 @@ package final class HighlightRenderSnapshotStore {
     }
 
     package var pendingEditCountForTesting: Int {
-        pendingEditMap.editCountForTesting
+        pendingEditMap.editCount
     }
 
     package var hasPendingEditsForTesting: Bool {
@@ -848,13 +858,6 @@ package final class HighlightRenderSnapshotStore {
         return clearedDirtyRanges
     }
 
-    /// Pending-edit checkpoint threshold: scattered (non-coalescing) edits grow
-    /// the map and every snapshot-range mapping costs O(#edits); the engine
-    /// delivers narrow refreshes by design, so the map never clears on its own.
-    package static let pendingEditCheckpointThreshold = 64
-    /// Test-only override (serial test execution).
-    nonisolated(unsafe) package static var pendingEditCheckpointThresholdOverrideForTesting: Int?
-
     package func recordPendingEdit(
         _ mutation: SyntaxEditorTextChange.Replacement,
         currentTextLength nextTextLength: Int
@@ -973,9 +976,7 @@ package final class HighlightRenderSnapshotStore {
     /// suppression ranges exist — lifting a suppression (IME composition end)
     /// must re-expose the underlying colors, which a fold would have baked away.
     private func checkpointPendingEditsIfNeeded() {
-        let threshold = unsafe Self.pendingEditCheckpointThresholdOverrideForTesting
-            ?? Self.pendingEditCheckpointThreshold
-        guard pendingEditMap.editCountForTesting > threshold,
+        guard pendingEditMap.editCount > pendingEditCheckpointThreshold,
               currentSuppressionRanges.isEmpty
         else {
             return

@@ -2000,7 +2000,7 @@ extension SyntaxHighlighterEngineTests {
             mutation: mutation,
             revision: 1
         )
-        let currentTokens = await engine.currentTokensForTesting()
+        let currentTokens = await engine.currentTokens()
 
         #expect(reset.tokenPayload == .fullSnapshot)
         #expect(update.tokenPayload == .replacement)
@@ -2460,7 +2460,7 @@ extension SyntaxHighlighterEngineTests {
             mutation: mutation,
             revision: 1
         )
-        let currentTokens = await incrementalEngine.currentTokensForTesting()
+        let currentTokens = await incrementalEngine.currentTokens()
         let full = await fullEngine.reset(source: updatedSource, language: SyntaxLanguage.swift)
         let nsUpdatedSource = updatedSource as NSString
         let stateFailedRange = nsUpdatedSource.range(of: "State.failed")
@@ -2515,7 +2515,7 @@ extension SyntaxHighlighterEngineTests {
             mutation: mutation,
             revision: 1
         )
-        let currentTokens = await incrementalEngine.currentTokensForTesting()
+        let currentTokens = await incrementalEngine.currentTokens()
         let full = await fullEngine.reset(source: updatedSource, language: SyntaxLanguage.swift)
         let refreshTotalLength = update.refreshRanges.reduce(0) { $0 + $1.length }
 

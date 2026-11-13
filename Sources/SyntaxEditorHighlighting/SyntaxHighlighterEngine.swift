@@ -6,12 +6,20 @@ import SwiftTreeSitter
 import SwiftTreeSitterLayer
 
 package actor SyntaxHighlighterEngine: SyntaxEditorHighlighting.Engine {
+    package static let defaultProgressiveResetThreshold = 65_536
+
     private let worker: HighlightRequestWorker
     private var currentRequestTask: Task<Void, Never>?
     private var currentRequestGeneration = 0
 
-    package init() {
-        worker = HighlightRequestWorker(registry: .shared)
+    /// - Parameter progressiveResetThreshold: Documents longer than this many
+    ///   UTF-16 units open progressively, viewport chunk first. Shorter
+    ///   documents are highlighted in one pass.
+    package init(progressiveResetThreshold: Int = SyntaxHighlighterEngine.defaultProgressiveResetThreshold) {
+        worker = HighlightRequestWorker(
+            registry: .shared,
+            progressiveResetThreshold: progressiveResetThreshold
+        )
     }
 
     // MARK: - SyntaxEditorHighlighting.Engine
@@ -78,16 +86,13 @@ package actor SyntaxHighlighterEngine: SyntaxEditorHighlighting.Engine {
         return stream.stream
     }
 
-    package func setVisibleRange(_ range: NSRange?) async {
-        await worker.setVisibleRange(range)
-    }
-
     package func render(source: String, language: SyntaxLanguage) async -> [SyntaxEditorHighlighting.Token] {
         await worker.render(source: source, language: language)
     }
 
-    package func currentTokensForTesting() async -> [SyntaxEditorHighlighting.Token] {
-        await worker.currentTokensForTesting()
+    /// The tokens of the installed session, base and overlay planes merged.
+    package func currentTokens() async -> [SyntaxEditorHighlighting.Token] {
+        await worker.currentTokens()
     }
 
     // MARK: - Internals
@@ -152,10 +157,12 @@ package actor SyntaxHighlighterEngine: SyntaxEditorHighlighting.Engine {
 private actor HighlightRequestWorker {
     private var session: HighlightSession?
     private let registry: LanguageConfigurationRegistry
+    private let progressiveResetThreshold: Int
     private var visibleRangeHint: NSRange?
 
-    init(registry: LanguageConfigurationRegistry) {
+    init(registry: LanguageConfigurationRegistry, progressiveResetThreshold: Int) {
         self.registry = registry
+        self.progressiveResetThreshold = progressiveResetThreshold
     }
 
     func reset(source: String, language: SyntaxLanguage, revision: Int) async -> SyntaxEditorHighlighting.Result {
@@ -289,7 +296,11 @@ private actor HighlightRequestWorker {
 
         // Always a fresh session: a half-built one is never installed (a cancelled
         // reset keeps the previous session usable — pinned behavior).
-        let nextSession = HighlightSession(language: language, setup: setup)
+        let nextSession = HighlightSession(
+            language: language,
+            setup: setup,
+            progressiveResetThreshold: progressiveResetThreshold
+        )
         nextSession.visibleRangeHint = visibleRangeHint
         let result = await nextSession.reset(source: source, revision: revision, emitFastPass: emitFastPass)
         guard !Task.isCancelled, let result else {
@@ -329,14 +340,14 @@ private actor HighlightRequestWorker {
         await reset(source: source, language: language, revision: 0).tokens
     }
 
-    func currentTokensForTesting() -> [SyntaxEditorHighlighting.Token] {
+    func currentTokens() -> [SyntaxEditorHighlighting.Token] {
         session?.currentTokens() ?? []
     }
 }
 
 /// Per-document highlighting state. Confined to the worker actor; all methods
 /// are synchronous (no suspension points inside an update).
-package final class HighlightSession {
+final class HighlightSession {
     let setup: HighlightingSetup
     let language: SyntaxLanguage
     var visibleRangeHint: NSRange?
@@ -372,21 +383,16 @@ package final class HighlightSession {
     /// generation is stale and its result is discarded.
     private var editGeneration = 0
     private static let semanticDrainChunkBudget = 10_000
+    private static let syntacticResetChunkBudget = 16_384
     /// Documents above this UTF-16 length open progressively (viewport chunk
     /// first); below it the monolithic reset keeps the historical two-phase
-    /// delivery. Tests lower the override to run the fixture suite through the
-    /// progressive path and assert equivalence.
-    private static let defaultProgressiveResetThreshold = 65_536
-    private static let syntacticResetChunkBudget = 16_384
-    /// Test-only escape hatch (serial test execution); never written in production.
-    package nonisolated(unsafe) static var progressiveResetThresholdOverrideForTesting: Int?
-    private static var progressiveResetThreshold: Int {
-        unsafe progressiveResetThresholdOverrideForTesting ?? defaultProgressiveResetThreshold
-    }
+    /// delivery.
+    private let progressiveResetThreshold: Int
 
-    init(language: SyntaxLanguage, setup: HighlightingSetup) {
+    init(language: SyntaxLanguage, setup: HighlightingSetup, progressiveResetThreshold: Int) {
         self.language = language
         self.setup = setup
+        self.progressiveResetThreshold = progressiveResetThreshold
         planes = LineTokenPlanes(styles: styleTable)
         semanticPass = SemanticPassFactory.make(language: language)
     }
@@ -442,7 +448,7 @@ package final class HighlightSession {
             layer = nextLayer
 
             let fullRange = NSRange(location: 0, length: layeredSource.utf16.count)
-            if fullRange.length > Self.progressiveResetThreshold {
+            if fullRange.length > progressiveResetThreshold {
                 // Progressive open for large documents: the viewport chunk paints
                 // first (parse + one bounded query instead of the whole-document
                 // query), then the remaining base chunks land with yields between
