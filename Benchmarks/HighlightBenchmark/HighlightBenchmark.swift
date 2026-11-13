@@ -2,6 +2,7 @@ import Benchmark
 import Dispatch
 import Foundation
 import SyntaxEditorCore
+import SyntaxEditorReferenceSamples
 
 let benchmarks: @Sendable () -> Void = {
     HighlightBenchmarkSuite(environment: ProcessInfo.processInfo.environment).register()
@@ -624,7 +625,7 @@ private struct HighlightBenchmarkCase: Sendable {
         Self(
             name: name,
             language: language,
-            resource: .bundled(subdirectory: "ReferenceSamples", fileName: fileName),
+            resource: .referenceSample(fileName: fileName),
             repeatSource: nil,
             minimumLineCount: minimumLineCount
         )
@@ -646,11 +647,14 @@ private struct HighlightBenchmarkCase: Sendable {
 }
 
 private enum BenchmarkResource: Sendable {
+    case referenceSample(fileName: String)
     case bundled(subdirectory: String, fileName: String)
     case externalFile(String)
 
     func loadString() -> String {
         let url = switch self {
+        case .referenceSample(let fileName):
+            referenceSampleURL(fileName: fileName)
         case .bundled(let subdirectory, let fileName):
             bundledResourceURL(subdirectory: subdirectory, fileName: fileName)
         case .externalFile(let path):
@@ -662,6 +666,13 @@ private enum BenchmarkResource: Sendable {
         } catch {
             fatalError("Failed to load benchmark source at \(url.path): \(error)")
         }
+    }
+
+    private func referenceSampleURL(fileName: String) -> URL {
+        guard let url = ReferenceSample.url(named: fileName) else {
+            fatalError("Missing reference sample \(fileName)")
+        }
+        return url
     }
 
     private func bundledResourceURL(subdirectory: String, fileName: String) -> URL {

@@ -272,7 +272,7 @@ struct SyntaxEditorCoreTests {
     @Test("Built-in highlight queries use canonical editor syntax captures")
     func builtInHighlightQueriesUseCanonicalCaptures() throws {
         for language in SyntaxLanguage.syntaxHighlightedCases {
-            let source = try String(contentsOf: highlightQueryURL(language: language), encoding: .utf8)
+            let source = try String(contentsOf: try highlightQueryURL(language: language), encoding: .utf8)
             let captures = captureNames(inQuerySource: source)
             let prefix = "editor.syntax.\(canonicalCaptureLanguageName(for: language))."
             #expect(captures.isEmpty == false, "No captures found for \(language.rawValue)")

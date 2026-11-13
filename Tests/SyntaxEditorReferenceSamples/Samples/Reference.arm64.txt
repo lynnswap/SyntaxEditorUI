@@ -1,0 +1,18 @@
+// ARM64 assembly
+.text
+.globl _answer
+
+_answer:
+    stp x29, x30, [sp, #-16]!
+    mov x29, sp
+    mov x0, #42
+    add x0, x0, #8
+    ldp x29, x30, [sp], #16
+    ret
+
+/* Data and strings */
+.data
+message:
+    .asciz "Hello, ARM64!"
+values:
+    .long 1, 2, 0x20

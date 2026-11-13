@@ -93,6 +93,7 @@ let package = Package(
             name: "HighlightBenchmark",
             dependencies: [
                 "SyntaxEditorCore",
+                "SyntaxEditorReferenceSamples",
                 .product(name: "Benchmark", package: "benchmark"),
             ],
             path: "Benchmarks/HighlightBenchmark",
@@ -380,11 +381,20 @@ let package = Package(
                 "SyntaxEditorUICommon",
             ]
         ),
+        .target(
+            name: "SyntaxEditorReferenceSamples",
+            path: "Tests/SyntaxEditorReferenceSamples",
+            resources: [
+                .copy("Samples"),
+            ],
+            swiftSettings: syntaxEditorSwiftSettings
+        ),
         .testTarget(
             name: "SyntaxEditorCoreTests",
             dependencies: [
                 "SyntaxEditorCore",
                 "SyntaxEditorModel",
+                "SyntaxEditorReferenceSamples",
                 .product(name: "ObservationBridge", package: "observationbridge"),
             ]
         ),
