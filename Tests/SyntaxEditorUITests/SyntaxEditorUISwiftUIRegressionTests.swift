@@ -104,6 +104,28 @@ extension SyntaxEditorUITests {
 #endif
     }
 
+    @Test("SyntaxEditorView requests a full highlight when rebinding to an edited document")
+    @MainActor
+    func syntaxEditorViewRequestsFullHighlightWhenRebindingToEditedDocument() async {
+        let highlighter = SyntaxEditorUITestHighlighter()
+        let editedDocument = SyntaxEditorModel(text: "let other = 2", language: .swift)
+        // Typing in another editor leaves an incremental change as the document's latest.
+        editedDocument.commitTextReplacements(
+            [SyntaxEditorTextChange.Replacement(location: 13, length: 0, replacement: "0")],
+            selectedRange: NSRange(location: 14, length: 0)
+        )
+        let model = SyntaxEditorTestContext(text: "let value = 1", language: SyntaxLanguage.swift)
+        let editorView = SyntaxEditorView(testContext: model, highlighter: highlighter)
+        await editorView.waitForPendingHighlightForTesting()
+        let initialResetCount = await highlighter.resetCount
+
+        editorView.update(model: editedDocument)
+        await editorView.waitForPendingHighlightForTesting()
+
+        #expect(await highlighter.updateCount == 0)
+        #expect(await highlighter.resetCount == initialResetCount + 1)
+    }
+
     @Test("SyntaxEditorView does not reuse cached highlights after document rebind")
     @MainActor
     func syntaxEditorViewDoesNotReuseCachedHighlightsAfterDocumentRebind() async {
