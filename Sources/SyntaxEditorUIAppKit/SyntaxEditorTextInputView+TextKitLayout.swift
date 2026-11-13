@@ -524,7 +524,7 @@ extension SyntaxEditorTextInputView {
             ranges.append(targetRange)
         }
 
-        return Self.mergedSyntaxRenderingAttributeRanges(ranges)
+        return SyntaxEditorRangeUtilities.mergedRanges(ranges)
     }
 
     private func fallbackSyntaxRenderingAttributeTargetRanges(for fragmentRange: NSRange) -> [NSRange] {
@@ -536,38 +536,6 @@ extension SyntaxEditorTextInputView {
         }
 
         return [fragmentRange]
-    }
-
-    private static func mergedSyntaxRenderingAttributeRanges(_ ranges: [NSRange]) -> [NSRange] {
-        guard !ranges.isEmpty else { return [] }
-
-        let sortedRanges = ranges.sorted {
-            if $0.location == $1.location {
-                return $0.upperBound < $1.upperBound
-            }
-            return $0.location < $1.location
-        }
-
-        var mergedRanges: [NSRange] = []
-        mergedRanges.reserveCapacity(sortedRanges.count)
-        for range in sortedRanges {
-            guard range.length > 0 else { continue }
-            guard let lastRange = mergedRanges.last else {
-                mergedRanges.append(range)
-                continue
-            }
-
-            if range.location <= lastRange.upperBound {
-                let mergedUpperBound = max(lastRange.upperBound, range.upperBound)
-                mergedRanges[mergedRanges.count - 1] = NSRange(
-                    location: lastRange.location,
-                    length: mergedUpperBound - lastRange.location
-                )
-            } else {
-                mergedRanges.append(range)
-            }
-        }
-        return mergedRanges
     }
 
     func validateSyntaxRenderingAttributesForDisplay(

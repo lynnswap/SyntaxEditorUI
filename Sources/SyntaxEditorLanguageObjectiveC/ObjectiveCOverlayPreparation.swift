@@ -17,7 +17,7 @@ struct ObjectiveCNonCodeRangeIndex {
     let ranges: [NSRange]
 
     init(ranges: [NSRange]) {
-        self.ranges = Self.normalized(ranges)
+        self.ranges = SyntaxEditorRangeUtilities.mergedRanges(ranges)
     }
 
     init(tokens: [SyntaxEditorHighlighting.Token], sourceLength: Int) {
@@ -72,29 +72,6 @@ struct ObjectiveCNonCodeRangeIndex {
         return lower
     }
 
-    private static func normalized(_ ranges: [NSRange]) -> [NSRange] {
-        let sortedRanges = ranges
-            .filter { $0.length > 0 }
-            .sorted {
-                if $0.location != $1.location {
-                    return $0.location < $1.location
-                }
-                return $0.length < $1.length
-            }
-        guard var current = sortedRanges.first else { return [] }
-        var result: [NSRange] = []
-        for range in sortedRanges.dropFirst() {
-            if range.location <= current.upperBound {
-                let upperBound = max(current.upperBound, range.upperBound)
-                current = NSRange(location: current.location, length: upperBound - current.location)
-            } else {
-                result.append(current)
-                current = range
-            }
-        }
-        result.append(current)
-        return result
-    }
 }
 
 struct ObjectiveCIndexedToken {

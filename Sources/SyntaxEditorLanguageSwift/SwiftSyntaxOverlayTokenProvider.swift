@@ -539,35 +539,8 @@ package enum SwiftSyntaxOverlayTokenProvider {
             let range = SyntaxEditorRangeUtilities.intersection(of: token.range, and: targetRange)
             return range.length > 0 ? range : nil
         }
-        .sorted { lhs, rhs in
-            if lhs.location != rhs.location {
-                return lhs.location < rhs.location
-            }
-            return lhs.length < rhs.length
-        }
 
-        return mergedRanges(ranges)
-    }
-
-    private static func mergedRanges(_ ranges: [NSRange]) -> [NSRange] {
-        guard var current = ranges.first else {
-            return []
-        }
-
-        var merged: [NSRange] = []
-        merged.reserveCapacity(ranges.count)
-        for range in ranges.dropFirst() {
-            guard range.location <= current.upperBound else {
-                merged.append(current)
-                current = range
-                continue
-            }
-
-            let upperBound = max(current.upperBound, range.upperBound)
-            current = NSRange(location: current.location, length: upperBound - current.location)
-        }
-        merged.append(current)
-        return merged
+        return SyntaxEditorRangeUtilities.mergedRanges(ranges)
     }
 
     private static func rangesIntersect(_ lhs: NSRange, _ rhs: NSRange) -> Bool {
@@ -636,13 +609,7 @@ package enum SwiftSyntaxOverlayTokenProvider {
             }
             return token.range
         }
-        .sorted {
-            if $0.location != $1.location {
-                return $0.location < $1.location
-            }
-            return $0.length < $1.length
-        }
-        return mergedRanges(ranges)
+        return SyntaxEditorRangeUtilities.mergedRanges(ranges)
     }
 
     private static func rangeIntersectsMergedRanges(_ range: NSRange, _ mergedRanges: [NSRange]) -> Bool {

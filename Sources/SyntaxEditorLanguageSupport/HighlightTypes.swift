@@ -107,32 +107,9 @@ package struct Result: Sendable {
         self.source = source
         self.language = language
         self.revision = revision
-        self.refreshRanges = Self.normalizedRefreshRanges(refreshRanges)
+        self.refreshRanges = SyntaxEditorRangeUtilities.mergedRanges(refreshRanges)
         self.phase = phase
         self.tokenPayload = tokenPayload
-    }
-
-    private static func normalizedRefreshRanges(_ ranges: [NSRange]) -> [NSRange] {
-        let sorted = ranges
-            .filter { $0.location != NSNotFound && $0.length > 0 }
-            .sorted { lhs, rhs in
-                lhs.location == rhs.location ? lhs.length < rhs.length : lhs.location < rhs.location
-            }
-        guard var current = sorted.first else { return [] }
-        var merged: [NSRange] = []
-        for range in sorted.dropFirst() {
-            if range.location <= current.upperBound {
-                current = NSRange(
-                    location: current.location,
-                    length: max(current.upperBound, range.upperBound) - current.location
-                )
-            } else {
-                merged.append(current)
-                current = range
-            }
-        }
-        merged.append(current)
-        return merged
     }
 
 }
