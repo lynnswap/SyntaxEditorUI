@@ -44,25 +44,9 @@ public final class SyntaxEditorView: UIScrollView, UITextInput, UITextInputTrait
     var findCoordinator: SyntaxEditorFindCoordinator?
     static let estimatedTabColumnWidth = 4
 
-    let highlighter: any SyntaxEditorHighlighting.Engine
+    let highlightCoordinator: HighlightRequestCoordinator
     let commandEngine = EditorCommandEngine()
-    var highlightTask: Task<Void, Never>?
-    var scheduledHighlightRequest: ScheduledHighlightRequest?
-    var nextScheduledHighlightRequestID = 0
-    var lastHighlightTokens: [SyntaxEditorHighlighting.Token] = []
-    var lastHighlightSource: String?
-    var lastHighlightRevision: Int?
-    var lastHighlightLanguage: SyntaxLanguage?
-    var materializedHighlightPhase: SyntaxEditorHighlighting.Result.Phase?
-    var materializedHighlightRevision: Int?
-    var materializedHighlightLanguage: SyntaxLanguage?
-    var appliedHighlightPhaseRecordsForTesting: [HighlightPhaseRecord] = []
-    var appliedHighlightPhaseWaitersForTesting: [HighlightPhaseWaiter] = []
-    var skippedHighlightPhaseRecordsForTesting: [HighlightPhaseRecord] = []
-    var skippedHighlightPhaseWaitersForTesting: [HighlightPhaseWaiter] = []
-    var nextHighlightPhaseWaiterID = 0
     var isApplyingModel = false
-    var isApplyingHighlight = false
     var isApplyingUndoRedo = false
     var isApplyingCommandSelection = false
     var lastAppliedLanguageIdentifier: String?
@@ -161,7 +145,7 @@ public final class SyntaxEditorView: UIScrollView, UITextInput, UITextInputTrait
         highlighter: any SyntaxEditorHighlighting.Engine
     ) {
         self.model = model
-        self.highlighter = highlighter
+        self.highlightCoordinator = HighlightRequestCoordinator(engine: highlighter)
         self.lastAppliedLineWrappingEnabled = model.lineWrappingEnabled
         self.lastAppliedTheme = model.theme
         self.lastAppliedThemeAppearance = nil
@@ -171,6 +155,7 @@ public final class SyntaxEditorView: UIScrollView, UITextInput, UITextInputTrait
 
         super.init(frame: .zero)
 
+        highlightCoordinator.client = self
         configureTextSystem()
         configureScrollView()
         configureUndoObservation()
@@ -184,7 +169,6 @@ public final class SyntaxEditorView: UIScrollView, UITextInput, UITextInputTrait
     }
 
     isolated deinit {
-        highlightTask?.cancel()
         cancelModelObservations()
         NotificationCenter.default.removeObserver(self)
     }

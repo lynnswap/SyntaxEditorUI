@@ -81,10 +81,163 @@ func syntaxEditorDrainMainActorObservationDelivery<Value>(
 extension SyntaxEditorView {
     convenience init(testContext: SyntaxEditorTestContext) {
         self.init(model: testContext.model)
+        _ = highlightPhaseRecorder
     }
 
     convenience init(testContext: SyntaxEditorTestContext, highlighter: any SyntaxEditorHighlighting.Engine) {
         self.init(model: testContext.model, highlighter: highlighter)
+        _ = highlightPhaseRecorder
+    }
+
+    /// Records this editor's highlight phases from the first use on. The test
+    /// initializers attach it before any result can arrive.
+    var highlightPhaseRecorder: HighlightPhaseRecorder {
+        if let recorder = highlightPhaseRecorders.object(forKey: self) {
+            return recorder
+        }
+        let recorder = HighlightPhaseRecorder(observing: highlightCoordinator)
+        highlightPhaseRecorders.setObject(recorder, forKey: self)
+        return recorder
+    }
+
+    /// Waits until no highlight request is in flight.
+    ///
+    /// A result that cannot apply yet reschedules and lets its task finish
+    /// unapplied, so this follows reschedules until an awaited task ends
+    /// without a successor. No wall clock is involved: a pipeline that never
+    /// settles surfaces as the suite's time limit.
+    @discardableResult
+    func waitForPendingHighlightForTesting() async -> Bool {
+        while true {
+            guard let task = highlightCoordinator.task else { return true }
+            let scheduledRequestCount = highlightCoordinator.scheduledRequestCount
+            await task.value
+            if highlightCoordinator.scheduledRequestCount == scheduledRequestCount {
+                return true
+            }
+        }
+    }
+
+    /// Waits until `phase` is applied for the current text revision. Returns
+    /// `false` once that can no longer happen.
+    func waitForAppliedHighlightPhaseForTesting(
+        _ phase: SyntaxEditorHighlighting.Result.Phase
+    ) async -> Bool {
+        await highlightPhaseRecorder.waitForApplied(phase, revision: model.textRevision)
+    }
+
+    /// Waits until `phase` is skipped for the current text revision. Returns
+    /// `false` once that can no longer happen.
+    func waitForSkippedHighlightPhaseForTesting(
+        _ phase: SyntaxEditorHighlighting.Result.Phase
+    ) async -> Bool {
+        await highlightPhaseRecorder.waitForSkipped(phase, revision: model.textRevision)
+    }
+}
+
+@MainActor
+private let highlightPhaseRecorders = NSMapTable<SyntaxEditorView, HighlightPhaseRecorder>.weakToStrongObjects()
+
+/// Turns a coordinator's events into awaitable "phase applied" and "phase
+/// skipped" conditions.
+@MainActor
+final class HighlightPhaseRecorder {
+    typealias Phase = SyntaxEditorHighlighting.Result.Phase
+
+    private struct Record: Equatable {
+        let phase: Phase
+        let revision: Int
+    }
+
+    private struct Waiter {
+        let record: Record
+        let continuation: CheckedContinuation<Bool, Never>
+    }
+
+    private weak var coordinator: HighlightRequestCoordinator?
+    private var applied: [Record] = []
+    private var skipped: [Record] = []
+    private var appliedWaiters: [Waiter] = []
+    private var skippedWaiters: [Waiter] = []
+
+    init(observing coordinator: HighlightRequestCoordinator) {
+        self.coordinator = coordinator
+        if let materialized = coordinator.materialized {
+            applied.append(Record(phase: materialized.phase, revision: materialized.revision))
+        }
+        coordinator.eventObserver = { [weak self] event in
+            self?.record(event)
+        }
+    }
+
+    func waitForApplied(_ phase: Phase, revision: Int) async -> Bool {
+        let record = Record(phase: phase, revision: revision)
+        if applied.contains(record) {
+            return true
+        }
+        guard !skipped.contains(record), hasPendingRequest(revision: revision) else {
+            return false
+        }
+        return await withCheckedContinuation { continuation in
+            appliedWaiters.append(Waiter(record: record, continuation: continuation))
+        }
+    }
+
+    func waitForSkipped(_ phase: Phase, revision: Int) async -> Bool {
+        let record = Record(phase: phase, revision: revision)
+        if skipped.contains(record) {
+            return true
+        }
+        // A complete result supersedes any earlier phase of its revision.
+        let isSuperseded = phase != .complete
+            && applied.contains(Record(phase: .complete, revision: revision))
+        guard !applied.contains(record), !isSuperseded, hasPendingRequest(revision: revision) else {
+            return false
+        }
+        return await withCheckedContinuation { continuation in
+            skippedWaiters.append(Waiter(record: record, continuation: continuation))
+        }
+    }
+
+    private func hasPendingRequest(revision: Int) -> Bool {
+        coordinator?.scheduledRequest?.revision == revision
+    }
+
+    private func record(_ event: HighlightRequestCoordinator.Event) {
+        switch event {
+        case .requestsReset:
+            applied.removeAll()
+            skipped.removeAll()
+            resume(&appliedWaiters, returning: false) { _ in true }
+            resume(&skippedWaiters, returning: false) { _ in true }
+        case .applied(let phase, let revision):
+            let record = Record(phase: phase, revision: revision)
+            applied.append(record)
+            resume(&appliedWaiters, returning: true) { $0 == record }
+            resume(&skippedWaiters, returning: false) {
+                $0 == record || (phase == .complete && $0.revision == revision)
+            }
+        case .skipped(let phase, let revision):
+            let record = Record(phase: phase, revision: revision)
+            skipped.append(record)
+            resume(&skippedWaiters, returning: true) { $0 == record }
+            resume(&appliedWaiters, returning: false) { $0 == record }
+        case .requestFinished(let revision):
+            resume(&appliedWaiters, returning: false) { $0.revision == revision }
+            resume(&skippedWaiters, returning: false) { $0.revision == revision }
+        }
+    }
+
+    private func resume(
+        _ waiters: inout [Waiter],
+        returning result: Bool,
+        where matches: (Record) -> Bool
+    ) {
+        let matched = waiters.filter { matches($0.record) }
+        waiters.removeAll { matches($0.record) }
+        for waiter in matched {
+            waiter.continuation.resume(returning: result)
+        }
     }
 }
 

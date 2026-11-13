@@ -69,25 +69,17 @@
     let layoutManager: NSTextLayoutManager
     let textContainer: NSTextContainer
 
-    let highlighter: any SyntaxEditorHighlighting.Engine
+    let highlightCoordinator: HighlightRequestCoordinator
     let commandEngine = EditorCommandEngine()
-    var highlightTask: Task<Void, Never>?
     var didUpdateSyntaxRendering: (([NSRange]) -> Void)?
-    var scheduledHighlightRequest: ScheduledHighlightRequest?
-    var nextScheduledHighlightRequestID = 0
-    var lastHighlightTokens: [SyntaxEditorHighlighting.Token] = []
-    var lastHighlightSource: String?
-    var lastHighlightRevision: Int?
-    var lastHighlightLanguage: SyntaxLanguage?
-    var materializedHighlightPhase: SyntaxEditorHighlighting.Result.Phase?
-    var materializedHighlightRevision: Int?
-    var materializedHighlightLanguage: SyntaxLanguage?
     var isApplyingModel = false
     var isApplyingHighlight = false
     var lastAppliedLanguageIdentifier: String?
     var pendingUndoSelection: NSRange?
     var pendingHighlightEdit: PendingHighlightEdit?
-    var pendingHighlightApplication: PendingHighlightApplication?
+    /// A result that arrived while text was selected. Recoloring under a
+    /// selection is deferred until the selection collapses.
+    var pendingHighlightResult: SyntaxEditorHighlighting.Result?
     var matchedBracketRanges: [NSRange] = []
     var visibleTextDisplayInvalidationCount = 0
     var fullTextDisplayInvalidationCount = 0
@@ -102,11 +94,6 @@
     var modelObservation: PortableObservationTracking.Token?
     var modelConfigurationObservation: PortableObservationTracking.Token?
     var isRetilingForContentInsetsChange = false
-    var appliedHighlightPhaseRecordsForTesting: [HighlightPhaseRecord] = []
-    var appliedHighlightPhaseWaitersForTesting: [HighlightPhaseWaiter] = []
-    var skippedHighlightPhaseRecordsForTesting: [HighlightPhaseRecord] = []
-    var skippedHighlightPhaseWaitersForTesting: [HighlightPhaseWaiter] = []
-    var nextHighlightPhaseWaiterID = 0
 
     var scrollView: NSScrollView { self }
 
@@ -144,7 +131,7 @@
       highlighter: any SyntaxEditorHighlighting.Engine
     ) {
       self.model = model
-      self.highlighter = highlighter
+      self.highlightCoordinator = HighlightRequestCoordinator(engine: highlighter)
       self.lastAppliedDocumentRevision = model.textRevision
 
       let textSystem = EditorTextSystem(
@@ -165,6 +152,7 @@
 
       super.init(frame: .zero)
 
+      highlightCoordinator.client = self
       nativeTextView.guardedUndoManager = guardedUndoManager
       guardedUndoManager.allowsMutation = { [weak self] in
         self?.model.isEditable ?? true
@@ -286,7 +274,6 @@
     }
 
     isolated deinit {
-      highlightTask?.cancel()
       cancelModelObservations()
     }
 
