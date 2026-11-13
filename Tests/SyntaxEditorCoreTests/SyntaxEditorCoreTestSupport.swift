@@ -1,5 +1,6 @@
 import Foundation
 import Observation
+import SyntaxEditorReferenceSamples
 import Testing
 @testable import SyntaxEditorCore
 
@@ -104,52 +105,13 @@ struct HighlightSemanticSnapshot {
 }
 
 func referenceSampleText(named filename: String) throws -> String {
-    let repositoryRootURL = URL(fileURLWithPath: #filePath)
-        .deletingLastPathComponent()
-        .deletingLastPathComponent()
-        .deletingLastPathComponent()
-    let sampleURL = repositoryRootURL
-        .appendingPathComponent("Tools/Mini/Mini/ReferenceSamples", isDirectory: true)
-        .appendingPathComponent(filename)
-    return try String(contentsOf: sampleURL, encoding: .utf8)
+    try ReferenceSample.text(named: filename)
 }
 
-func repositoryRootURL() -> URL {
-    URL(fileURLWithPath: #filePath)
-        .deletingLastPathComponent()
-        .deletingLastPathComponent()
-        .deletingLastPathComponent()
-}
-
-func highlightQueryURL(language: SyntaxLanguage) -> URL {
-    let directoryName = switch language {
-    case .plainText:
-        preconditionFailure("Plain text does not have highlight queries.")
-    case .assemblyARM:
-        "AssemblyARMQueries"
-    case .css:
-        "CSSQueries"
-    case .html:
-        "HTMLQueries"
-    case .javascript:
-        "JavaScriptQueries"
-    case .json:
-        "JSONQueries"
-    case .objectiveC:
-        "ObjectiveCQueries"
-    case .swift:
-        "SwiftQueries"
-    case .toml:
-        "TOMLQueries"
-    case .xml:
-        "XMLQueries"
-    }
-    return repositoryRootURL()
-        .appendingPathComponent("Sources", isDirectory: true)
-        .appendingPathComponent(languageTargetName(for: language), isDirectory: true)
-        .appendingPathComponent("Resources", isDirectory: true)
-        .appendingPathComponent(directoryName, isDirectory: true)
-        .appendingPathComponent("highlights.scm")
+/// The bundled `highlights.scm` the highlighter loads for `language`.
+func highlightQueryURL(language: SyntaxLanguage) throws -> URL {
+    let directory = try #require(language.treeSitterSupport?.queryDirectories.first)
+    return directory.appendingPathComponent("highlights.scm")
 }
 
 func canonicalCaptureLanguageName(for language: SyntaxLanguage) -> String {
@@ -175,35 +137,6 @@ func canonicalCaptureLanguageName(for language: SyntaxLanguage) -> String {
     case .xml:
         "xml"
     }
-}
-
-func languageImplementationDirectoryName(for language: SyntaxLanguage) -> String {
-    switch language {
-    case .plainText:
-        "PlainText"
-    case .assemblyARM:
-        "AssemblyARM"
-    case .css:
-        "CSS"
-    case .html:
-        "HTML"
-    case .javascript:
-        "JavaScript"
-    case .json:
-        "JSON"
-    case .objectiveC:
-        "ObjectiveC"
-    case .swift:
-        "Swift"
-    case .toml:
-        "TOML"
-    case .xml:
-        "XML"
-    }
-}
-
-func languageTargetName(for language: SyntaxLanguage) -> String {
-    "SyntaxEditorLanguage\(languageImplementationDirectoryName(for: language))"
 }
 
 func captureNames(inQuerySource source: String) -> [String] {
