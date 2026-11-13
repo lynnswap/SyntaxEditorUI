@@ -103,7 +103,9 @@ files. It intentionally stays in this local tool and does not expose private
 framework details through package runtime APIs. The tool-only Swift interfaces
 under `PrivateInterfaces/` were derived from the installed Xcode frameworks
 with `MachOSwiftSection`; regenerate them if the local Xcode build changes the
-private ABI enough to break compilation.
+private ABI enough to break compilation. They cover Xcode 26 and Xcode 27.
+Where the two differ, the interface declares both forms and `Package.swift`
+sets a compilation condition from the version of the selected Xcode.
 
 CSS uses the same `SourceEditorDataSource` probe shape, backed by
 `SourceModelSupport.SourceModelLanguageService` instead of SymbolCache. Use it

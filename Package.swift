@@ -23,6 +23,15 @@ let xcodeContentsPath: String = {
 /// Holds the private frameworks `EditorSpecTool` links against.
 let xcodeSharedFrameworksPath = "\(xcodeContentsPath)/SharedFrameworks"
 
+/// Compilation conditions for private API that differs between Xcode versions.
+/// Xcode 27 added a `manifestModulesURL` parameter to `SymbolCacheSDKLoader.init`.
+let editorSpecToolXcodeConditions: [SwiftSetting] = {
+    let versionInfo = NSDictionary(contentsOfFile: "\(xcodeContentsPath)/version.plist")
+    let version = versionInfo?["CFBundleShortVersionString"] as? String
+    let majorVersion = version?.split(separator: ".").first.flatMap { Int($0) } ?? 0
+    return majorVersion >= 27 ? [.define("SYMBOL_CACHE_SDK_LOADER_TAKES_MANIFEST_MODULES")] : []
+}()
+
 let syntaxEditorSwiftSettings: [SwiftSetting] = [
     .swiftLanguageMode(.v6),
     .defaultIsolation(nil),
@@ -87,10 +96,10 @@ let package = Package(
                 .defaultIsolation(nil),
                 .strictMemorySafety(),
                 .unsafeFlags([
-                    "-I", "Tools/EditorSpecSnapshot/PrivateInterfaces",
+                    "-I", "\(Context.packageDirectory)/Tools/EditorSpecSnapshot/PrivateInterfaces",
                     "-F", xcodeSharedFrameworksPath,
                 ], .when(platforms: [.macOS])),
-            ],
+            ] + editorSpecToolXcodeConditions,
             linkerSettings: [
                 .unsafeFlags([
                     "-F", xcodeSharedFrameworksPath,
