@@ -179,26 +179,6 @@ func syntaxEditorUITestColorsEqual(_ lhs: SyntaxEditorTheme.Color?, _ rhs: Synta
         && abs(lhsAlpha - rhsAlpha) < 0.002
 }
 
-/// Legacy paint fallback for platform tests that cannot yet wait for an
-/// applied-highlight phase. Prefer owner-boundary waits such as
-/// `waitForAppliedHighlightPhaseForTesting` before sampling color directly;
-/// this helper observes paint symptoms and is not a materialization contract.
-@MainActor
-func syntaxEditorWaitForColor(
-    _ currentColor: @MainActor () -> SyntaxEditorTheme.Color?,
-    equals expectedColor: SyntaxEditorTheme.Color,
-    attempts: Int = 20
-) async -> Bool {
-    for _ in 0..<attempts {
-        if syntaxEditorUITestColorsEqual(currentColor(), expectedColor) {
-            return true
-        }
-        await Task.yield()
-        try? await Task.sleep(nanoseconds: 2_000_000)
-    }
-    return syntaxEditorUITestColorsEqual(currentColor(), expectedColor)
-}
-
 actor ManualSyntaxHighlightGate {
     struct SuspensionWaiter {
         let id: Int
